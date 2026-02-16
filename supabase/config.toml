@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.alert-escalation-worker]
 verify_jwt = false
+
+[functions.flowpulse-reactor]
+verify_jwt = false
