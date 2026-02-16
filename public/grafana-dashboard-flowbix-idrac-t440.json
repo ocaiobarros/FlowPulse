@@ -1,0 +1,855 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_ZABBIX_MDP",
+      "label": "Zabbix-MDP",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "alexanderzobnin-zabbix-datasource",
+      "pluginName": "Zabbix"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "datasource",
+      "id": "alexanderzobnin-zabbix-datasource",
+      "name": "Zabbix",
+      "version": "4.0.0"
+    },
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "description": "Dashboard iDRAC Dell PowerEdge T440 — Monitoramento NOC via Zabbix",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "⚡ STATUS RÁPIDO",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" },
+            { "options": { "Attention (2)": { "color": "#FFBF00", "index": 1, "text": "ATENÇÃO" } }, "type": "value" },
+            { "options": { "Critical (1)": { "color": "#8B0000", "index": 2, "text": "CRÍTICO" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Status Geral",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "System Info" },
+          "item": { "filter": "Overall System Status" },
+          "mode": 0,
+          "options": { "showDisabledItems": false, "skipEmptyValues": false },
+          "refId": "A",
+          "resultFormat": "time_series",
+          "table": { "skipEmptyValues": false }
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" },
+            { "options": { "Attention (2)": { "color": "#FFBF00", "index": 1, "text": "ATENÇÃO" } }, "type": "value" },
+            { "options": { "Critical (1)": { "color": "#8B0000", "index": 2, "text": "CRÍTICO" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Rollup",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "System Info" },
+          "item": { "filter": "Overall System Rollup Status" },
+          "mode": 0,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" },
+            { "options": { "Attention (2)": { "color": "#FFBF00", "index": 1, "text": "ATENÇÃO" } }, "type": "value" },
+            { "options": { "Critical (1)": { "color": "#8B0000", "index": 2, "text": "CRÍTICO" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Storage",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Disks / Storage" },
+          "item": { "filter": "Overall System Storage Status" },
+          "mode": 0,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "On (4)": { "color": "#39FF14", "index": 0, "text": "Ligado" } }, "type": "value" },
+            { "options": { "Off (3)": { "color": "#8B0000", "index": 1, "text": "Desligado" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Energia",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Power" },
+          "item": { "filter": "Overall System Power State" },
+          "mode": 0,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "🌡️ TEMPERATURA",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisLabel": "°C",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": false
+          },
+          "unit": "celsius"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "CPU1" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#39FF14", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "CPU2" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#00E5FF", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Inlet" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "#FFBF00", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 6 },
+      "id": 10,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "Temperatura — Histórico",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor CPU1 Temp Value" },
+          "mode": 0,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "alias": "CPU1"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor CPU2 Temp Value" },
+          "mode": 0,
+          "refId": "B",
+          "resultFormat": "time_series",
+          "alias": "CPU2"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor System Board Inlet Temp Value" },
+          "mode": 0,
+          "refId": "C",
+          "resultFormat": "time_series",
+          "alias": "Inlet"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 6 },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Status Temperatura",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor CPU1 Temp Status" },
+          "mode": 0,
+          "refId": "A",
+          "alias": "CPU1"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor CPU2 Temp Status" },
+          "mode": 0,
+          "refId": "B",
+          "alias": "CPU2"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor System Board Inlet Temp Status" },
+          "mode": 0,
+          "refId": "C",
+          "alias": "Inlet"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#39FF14", "value": null },
+            { "color": "#FFBF00", "value": 43 },
+            { "color": "#8B0000", "value": 93 }
+          ]}
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 10 },
+      "id": 12,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Temperatura Atual",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor CPU1 Temp Value" },
+          "mode": 0,
+          "refId": "A",
+          "alias": "CPU1"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor CPU2 Temp Value" },
+          "mode": 0,
+          "refId": "B",
+          "alias": "CPU2"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Temperatures" },
+          "item": { "filter": "Temperature Sensor System Board Inlet Temp Value" },
+          "mode": 0,
+          "refId": "C",
+          "alias": "Inlet"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "🌀 VENTILAÇÃO",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rotrpm",
+          "min": 0,
+          "max": 6000,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#8B0000", "value": null },
+            { "color": "#FFBF00", "value": 500 },
+            { "color": "#39FF14", "value": 800 }
+          ]},
+          "color": { "mode": "continuous-GrYlRd" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 15 },
+      "id": 20,
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true
+      },
+      "title": "Velocidade das Ventoinhas (RPM)",
+      "type": "bargauge",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Fans" },
+          "item": { "filter": "Fan System Board Fan1 Speed" },
+          "mode": 0,
+          "refId": "A",
+          "alias": "Fan 1"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Fans" },
+          "item": { "filter": "Fan System Board Fan2 Speed" },
+          "mode": 0,
+          "refId": "B",
+          "alias": "Fan 2"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" },
+            { "options": { "Critical (1)": { "color": "#8B0000", "index": 1, "text": "CRÍTICO" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 15 },
+      "id": 21,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Status das Ventoinhas",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Fans" },
+          "item": { "filter": "Fan System Board Fan1 Status" },
+          "mode": 0,
+          "refId": "A",
+          "alias": "Fan 1"
+        },
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "group": { "filter": "$group" },
+          "host": { "filter": "$host" },
+          "application": { "filter": "Fans" },
+          "item": { "filter": "Fan System Board Fan2 Status" },
+          "mode": 0,
+          "refId": "B",
+          "alias": "Fan 2"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "id": 103,
+      "title": "⚡ ENERGIA (PSU)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" },
+            { "options": { "Online and OK (242)": { "color": "#39FF14", "index": 1, "text": "Online e OK" } }, "type": "value" },
+            { "options": { "Presence Detected (1)": { "color": "#39FF14", "index": 2, "text": "Presente" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 22 },
+      "id": 30,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "PSU 1",
+      "type": "stat",
+      "targets": [
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 1 Status" },
+          "mode": 0, "refId": "A", "alias": "Status"
+        },
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 1 Input Voltage" },
+          "mode": 0, "refId": "B", "alias": "Tensão"
+        },
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 1 Maximum Power" },
+          "mode": 0, "refId": "C", "alias": "Potência Máx."
+        },
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 1 State Settings" },
+          "mode": 0, "refId": "D", "alias": "Estado"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" },
+            { "options": { "Online and OK (242)": { "color": "#39FF14", "index": 1, "text": "Online e OK" } }, "type": "value" },
+            { "options": { "Presence Detected (1)": { "color": "#39FF14", "index": 2, "text": "Presente" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#39FF14", "value": null }] },
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 22 },
+      "id": 31,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "PSU 2",
+      "type": "stat",
+      "targets": [
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 2 Status" },
+          "mode": 0, "refId": "A", "alias": "Status"
+        },
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 2 Input Voltage" },
+          "mode": 0, "refId": "B", "alias": "Tensão"
+        },
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 2 Maximum Power" },
+          "mode": 0, "refId": "C", "alias": "Potência Máx."
+        },
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Supply 2 State Settings" },
+          "mode": 0, "refId": "D", "alias": "Estado"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" }
+          ],
+          "color": { "mode": "fixed", "fixedColor": "#FFBF00" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 28 },
+      "id": 32,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "Consumo Energético",
+      "type": "stat",
+      "targets": [
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Usage Minimum Idle Power" },
+          "mode": 0, "refId": "A", "alias": "Consumo Mín. Idle"
+        },
+        {
+          "group": { "filter": "$group" }, "host": { "filter": "$host" },
+          "application": { "filter": "Power" }, "item": { "filter": "Power Usage Sensor Status" },
+          "mode": 0, "refId": "B", "alias": "Sensor Status"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id": 104,
+      "title": "💾 ARMAZENAMENTO",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "mappings", "value": [{ "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "✅ OK" } }, "type": "value" }] }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Estado" },
+            "properties": [
+              { "id": "mappings", "value": [{ "options": { "Online (3)": { "color": "#39FF14", "index": 0, "text": "🟢 Online" } }, "type": "value" }] }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "id": 40,
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false }
+      },
+      "title": "Discos Físicos",
+      "type": "table",
+      "targets": [
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Disk [1-8] : Disk Size/" }, "mode": 0, "refId": "A", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Disk [1-8] : Disk Status/" }, "mode": 0, "refId": "B", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Disk [1-8] : Disk State/" }, "mode": 0, "refId": "C", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Disk [1-8] : Manufacturer/" }, "mode": 0, "refId": "D", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Disk [1-8] : Model Number/" }, "mode": 0, "refId": "E", "resultFormat": "table" }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "OK" } }, "type": "value" }
+          ],
+          "color": { "mode": "fixed", "fixedColor": "#39FF14" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 40 },
+      "id": 41,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "title": "RAID Controller",
+      "type": "stat",
+      "targets": [
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "RAID Controller : Status" }, "mode": 0, "refId": "A", "alias": "Status" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "RAID Controller : Firmware Version" }, "mode": 0, "refId": "B", "alias": "Firmware" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "RAID Controller : Name" }, "mode": 0, "refId": "C", "alias": "Nome" }
+      ]
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "✅ OK" } }, "type": "value" },
+            { "options": { "Online (2)": { "color": "#39FF14", "index": 1, "text": "🟢 Online" } }, "type": "value" }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 16, "x": 8, "y": 40 },
+      "id": 42,
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
+      "title": "Volumes Virtuais (RAID)",
+      "type": "table",
+      "targets": [
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Volume [1-2] : Name/" }, "mode": 0, "refId": "A", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Volume [1-2] : Size/" }, "mode": 0, "refId": "B", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Volume [1-2] : State/" }, "mode": 0, "refId": "C", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Volume [1-2] : Status/" }, "mode": 0, "refId": "D", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Disks / Storage" }, "item": { "filter": "/Volume [1-2] : Virtual Disk State/" }, "mode": 0, "refId": "E", "resultFormat": "table" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 105,
+      "title": "🌐 REDE",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [
+            { "options": { "OK (3)": { "color": "#39FF14", "index": 0, "text": "✅ OK" } }, "type": "value" },
+            { "options": { "Up (2)": { "color": "#39FF14", "index": 1, "text": "🟢 Up" } }, "type": "value" },
+            { "options": { "Down (1)": { "color": "#666666", "index": 2, "text": "⚫ Down" } }, "type": "value" }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 45 },
+      "id": 50,
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
+      "title": "Interfaces de Rede (NICs)",
+      "type": "table",
+      "targets": [
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Network Cards" }, "item": { "filter": "/NIC [1-6] : Name/" }, "mode": 0, "refId": "A", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Network Cards" }, "item": { "filter": "/NIC [1-6] : MAC Address/" }, "mode": 0, "refId": "B", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Network Cards" }, "item": { "filter": "/NIC [1-6] : Connection Status/" }, "mode": 0, "refId": "C", "resultFormat": "table" },
+        { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "Network Cards" }, "item": { "filter": "/NIC [1-6] : Status/" }, "mode": 0, "refId": "D", "resultFormat": "table" }
+      ]
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 52 },
+      "id": 106,
+      "title": "📋 INVENTÁRIO / INFORMAÇÕES DO SISTEMA",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+          "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#00E5FF" } }, "overrides": [] },
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 53 },
+          "id": 60,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "value_and_name",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+          },
+          "title": "Informações do Sistema",
+          "type": "stat",
+          "targets": [
+            { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "System Info" }, "item": { "filter": "System Model" }, "mode": 0, "refId": "A", "alias": "Modelo" },
+            { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "System Info" }, "item": { "filter": "System Asset Tag" }, "mode": 0, "refId": "B", "alias": "Asset Tag" },
+            { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "System Info" }, "item": { "filter": "System Express Service Code" }, "mode": 0, "refId": "C", "alias": "Service Code" },
+            { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "System Info" }, "item": { "filter": "BIOS Version" }, "mode": 0, "refId": "D", "alias": "BIOS" },
+            { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "System Info" }, "item": { "filter": "BIOS Date" }, "mode": 0, "refId": "E", "alias": "Data BIOS" },
+            { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "System Info" }, "item": { "filter": "DRAC Firmware version" }, "mode": 0, "refId": "F", "alias": "iDRAC FW" },
+            { "group": { "filter": "$group" }, "host": { "filter": "$host" }, "application": { "filter": "System Info" }, "item": { "filter": "DRAC Access URL" }, "mode": 0, "refId": "G", "alias": "iDRAC URL" }
+          ]
+        }
+      ]
+    }
+  ],
+  "refresh": "4m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["idrac", "dell", "zabbix", "noc", "flowbix"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Servidores", "value": "Servidores" },
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Grupo",
+        "multi": false,
+        "name": "group",
+        "options": [],
+        "query": { "group": "/.*/" },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "T440-MDP", "value": "T440-MDP" },
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "${DS_ZABBIX_MDP}" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Host",
+        "multi": false,
+        "name": "host",
+        "options": [],
+        "query": { "group": "$group", "host": "/.*/" },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "FLOWBIX | iDRAC — T440-MDP",
+  "uid": "flowbix-idrac-t440",
+  "version": 1,
+  "weekStart": ""
+}
