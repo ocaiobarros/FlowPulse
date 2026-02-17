@@ -20,6 +20,10 @@ interface ZabbixItemBrowserProps {
   initialGroupName?: string;
   initialHostName?: string;
   initialItemName?: string;
+  /** Enable multi-select mode (shows '+' button) */
+  multiSelect?: boolean;
+  /** IDs of already-selected series items */
+  selectedSeries?: string[];
   onSelectItem: (item: { itemid: string; key_: string; name: string; lastvalue?: string; units?: string }, context: { groupId: string; hostId: string; groupName: string; hostName: string }) => void;
 }
 
@@ -163,7 +167,7 @@ function VirtualSelect<T extends { id: string; label: string }>({
 
 // ── Main Component ──
 
-export default function ZabbixItemBrowser({ connectionId, selectedItemId, initialGroupId, initialHostId, initialGroupName, initialHostName, initialItemName, onSelectItem }: ZabbixItemBrowserProps) {
+export default function ZabbixItemBrowser({ connectionId, selectedItemId, initialGroupId, initialHostId, initialGroupName, initialHostName, initialItemName, multiSelect, selectedSeries, onSelectItem }: ZabbixItemBrowserProps) {
   const [selectedGroup, setSelectedGroup] = useState(initialGroupId || "");
   const [selectedHost, setSelectedHost] = useState(initialHostId || "");
   const [itemSearch, setItemSearch] = useState("");
@@ -356,6 +360,8 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, initia
               <div style={{ height: `${virtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
                 {virtualizer.getVirtualItems().map((vRow) => {
                   const item = filteredItems[vRow.index];
+                  const isSelected = selectedItemId === item.itemid;
+                  const isInSeries = multiSelect && selectedSeries?.includes(item.itemid);
                   return (
                     <button
                       key={item.itemid}
@@ -363,13 +369,17 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, initia
                       data-index={vRow.index}
                       onClick={() => handleSelect(item)}
                       className={`absolute left-0 w-full text-left p-1.5 transition-all text-[9px] ${
-                        selectedItemId === item.itemid
+                        isSelected || isInSeries
                           ? "bg-primary/15 border border-primary/40 text-primary"
                           : "hover:bg-accent/40 border border-transparent"
                       }`}
                       style={{ top: `${vRow.start}px`, height: `${vRow.size}px` }}
                     >
-                      <div className="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</div>
+                      <div className="flex items-center gap-1">
+                        {isInSeries && <Check className="w-3 h-3 text-primary shrink-0" />}
+                        {multiSelect && !isInSeries && <span className="text-[9px] text-muted-foreground/60 shrink-0 w-3 text-center">+</span>}
+                        <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</span>
+                      </div>
                       <div className="flex items-center justify-between text-muted-foreground mt-0.5 whitespace-nowrap">
                         <span className="font-mono overflow-hidden text-ellipsis max-w-[60%]">{item.key_}</span>
                         <span className="font-mono text-primary/70">

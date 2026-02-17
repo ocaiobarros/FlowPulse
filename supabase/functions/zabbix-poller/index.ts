@@ -58,17 +58,24 @@ async function zabbixCall(url: string, auth: string, method: string, params: Rec
   return data.result;
 }
 
+/* ─── Time-range to seconds ──────────────────────── */
+function parseTimeRange(range: string): number {
+  const match = range.match(/^(\d+)(h|d)$/);
+  if (!match) return 3600; // default 1h
+  const num = parseInt(match[1]);
+  return match[2] === "d" ? num * 86400 : num * 3600;
+}
+
 /* ─── Types ──────────────────────────────────────── */
 interface PollRequest {
   connection_id: string;
   dashboard_id: string;
-  /** Widget definitions: each has a telemetry key pattern and query config */
   widgets: WidgetPollConfig[];
 }
 
 interface WidgetPollConfig {
   widget_id: string;
-  widget_type: string; // "stat" | "gauge" | "timeseries" | "table" | "text"
+  widget_type: string;
   query: {
     source: string;
     method: string;
@@ -76,13 +83,16 @@ interface WidgetPollConfig {
   };
   adapter: {
     type: string;
-    /** Field to extract as value (e.g. "lastvalue") */
     value_field?: string;
-    /** For timeseries: history type (0=float, 1=char, 3=uint, 4=text) */
     history_type?: number;
-    /** Custom telemetry key override */
     telemetry_key?: string;
   };
+  /** Time range for historical queries (e.g. "1h", "24h", "7d") */
+  time_range?: string;
+  /** Multiple telemetry keys for multi-series */
+  telemetry_keys?: string[];
+  /** Series config for multi-series charts */
+  series?: Array<{ itemid: string; name: string; color: string }>;
 }
 
 interface TelemetryPayload {
@@ -105,54 +115,42 @@ function adaptItemToStat(items: Array<Record<string, string>>, cfg: WidgetPollCo
     const rawValue = parseFloat(rawStr);
     const key = cfg.adapter.telemetry_key || `zbx:item:${item.itemid}`;
     
-    // For status-like widgets, send the raw string value so color_map can match it
     if (isStatusType) {
       return {
-        tenant_id: "",
-        dashboard_id: "",
-        key,
+        tenant_id: "", dashboard_id: "", key,
         type: "stat",
-        data: {
-          value: rawStr,
-          unit: item.units || "",
-        },
-        ts: Date.now(),
-        v: 1,
+        data: { value: rawStr, unit: item.units || "" },
+        ts: Date.now(), v: 1,
       };
     }
     
     return {
-      tenant_id: "",
-      dashboard_id: "",
-      key,
+      tenant_id: "", dashboard_id: "", key,
       type: cfg.widget_type === "gauge" ? "gauge" : "stat",
       data: {
         value: rawValue,
         unit: item.units || "",
         ...(cfg.widget_type === "gauge" ? { min: 0, max: 100 } : {}),
       },
-      ts: Date.now(),
-      v: 1,
+      ts: Date.now(), v: 1,
     };
   });
 }
 
-function adaptHistoryToTimeseries(history: Array<Record<string, string>>, cfg: WidgetPollConfig): TelemetryPayload[] {
-  const key = cfg.adapter.telemetry_key || `zbx:widget:${cfg.widget_id}:ts`;
+function adaptHistoryToTimeseries(history: Array<Record<string, string>>, cfg: WidgetPollConfig, itemId?: string): TelemetryPayload[] {
+  const key = itemId 
+    ? `zbx:item:${itemId}` 
+    : (cfg.adapter.telemetry_key || `zbx:widget:${cfg.widget_id}:ts`);
   const points = history.map((h) => ({
     ts: parseInt(h.clock) * 1000,
     value: parseFloat(h.value || "0"),
   }));
-  // Sort ascending
   points.sort((a, b) => a.ts - b.ts);
   return [{
-    tenant_id: "",
-    dashboard_id: "",
-    key,
+    tenant_id: "", dashboard_id: "", key,
     type: "timeseries",
     data: { points, unit: "", label: "" },
-    ts: Date.now(),
-    v: 1,
+    ts: Date.now(), v: 1,
   }];
 }
 
@@ -165,18 +163,78 @@ function adaptToTable(items: Array<Record<string, string>>, cfg: WidgetPollConfi
     item.status === "0" ? "Enabled" : "Disabled",
   ]);
   return [{
-    tenant_id: "",
-    dashboard_id: "",
-    key,
-    type: "table",
-    data: { columns, rows },
-    ts: Date.now(),
-    v: 1,
+    tenant_id: "", dashboard_id: "", key,
+    type: "table", data: { columns, rows },
+    ts: Date.now(), v: 1,
   }];
 }
 
-function adaptResult(result: unknown, cfg: WidgetPollConfig): TelemetryPayload[] {
+async function adaptResultWithHistory(
+  url: string, auth: string, result: unknown, cfg: WidgetPollConfig
+): Promise<TelemetryPayload[]> {
   const items = Array.isArray(result) ? result : [];
+  
+  // For timeseries with time_range: fetch history.get for each item
+  if (cfg.widget_type === "timeseries" && cfg.time_range) {
+    const rangeSec = parseTimeRange(cfg.time_range);
+    const timeFrom = Math.floor(Date.now() / 1000) - rangeSec;
+    const itemIds = (cfg.series?.map(s => s.itemid) || (cfg.query.params as any)?.itemids || []) as string[];
+    
+    if (itemIds.length === 0) return adaptItemToStat(items, cfg);
+    
+    // Fetch history for each item in parallel
+    const allPayloads: TelemetryPayload[] = [];
+    await Promise.all(itemIds.map(async (itemId) => {
+      try {
+        const histResult = await zabbixCall(url, auth, "history.get", {
+          itemids: [itemId],
+          history: cfg.adapter.history_type ?? 0,
+          time_from: timeFrom,
+          sortfield: "clock",
+          sortorder: "ASC",
+          limit: 1000,
+          output: "extend",
+        });
+        const payloads = adaptHistoryToTimeseries(
+          histResult as Array<Record<string, string>>,
+          cfg,
+          itemId
+        );
+        allPayloads.push(...payloads);
+      } catch (err) {
+        console.error(`history.get failed for item ${itemId}:`, err);
+      }
+    }));
+    return allPayloads;
+  }
+
+  // For timeseries without time_range but with multi-series: also fetch history (last 1h default)
+  if (cfg.widget_type === "timeseries" && cfg.series && cfg.series.length > 0) {
+    const timeFrom = Math.floor(Date.now() / 1000) - 3600;
+    const allPayloads: TelemetryPayload[] = [];
+    await Promise.all(cfg.series.map(async (s) => {
+      try {
+        const histResult = await zabbixCall(url, auth, "history.get", {
+          itemids: [s.itemid],
+          history: cfg.adapter.history_type ?? 0,
+          time_from: timeFrom,
+          sortfield: "clock",
+          sortorder: "ASC",
+          limit: 1000,
+          output: "extend",
+        });
+        allPayloads.push(...adaptHistoryToTimeseries(
+          histResult as Array<Record<string, string>>,
+          cfg,
+          s.itemid
+        ));
+      } catch (err) {
+        console.error(`history.get failed for series ${s.itemid}:`, err);
+      }
+    }));
+    return allPayloads;
+  }
+  
   switch (cfg.widget_type) {
     case "stat":
     case "gauge":
@@ -213,7 +271,6 @@ Deno.serve(async (req) => {
     return json({ error: "ZABBIX_ENCRYPTION_KEY not configured" }, 500);
   }
 
-  // Auth
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return json({ error: "Unauthorized" }, 401);
@@ -240,7 +297,6 @@ Deno.serve(async (req) => {
       return json({ error: "connection_id, dashboard_id, and widgets[] are required" }, 400);
     }
 
-    // Get tenant
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
     const { data: tenantData } = await serviceClient.rpc("get_user_tenant_id", { p_user_id: userId });
     const tenantId = tenantData as string;
@@ -248,7 +304,6 @@ Deno.serve(async (req) => {
       return json({ error: "Tenant not found" }, 403);
     }
 
-    // Fetch connection (RLS)
     const { data: conn, error: connErr } = await supabase
       .from("zabbix_connections")
       .select("id, url, username, password_ciphertext, password_iv, password_tag, is_active")
@@ -258,13 +313,11 @@ Deno.serve(async (req) => {
     if (connErr || !conn) return json({ error: "Connection not found" }, 404);
     if (!conn.is_active) return json({ error: "Connection disabled" }, 400);
 
-    // Decrypt & login
     const password = await decryptPassword(
       conn.password_ciphertext, conn.password_iv, conn.password_tag, encryptionKey,
     );
     const zabbixAuth = await zabbixLogin(conn.url, conn.username, password);
 
-    // Poll each widget in parallel
     const allTelemetry: TelemetryPayload[] = [];
     const errors: string[] = [];
 
@@ -272,7 +325,7 @@ Deno.serve(async (req) => {
       widgets.map(async (w) => {
         try {
           const result = await zabbixCall(conn.url, zabbixAuth, w.query.method, w.query.params);
-          const payloads = adaptResult(result, w);
+          const payloads = await adaptResultWithHistory(conn.url, zabbixAuth, result, w);
           for (const p of payloads) {
             p.tenant_id = tenantId;
             p.dashboard_id = dashboard_id;
@@ -284,7 +337,6 @@ Deno.serve(async (req) => {
       }),
     );
 
-    // Send to Reactor
     let reactorResult = null;
     if (allTelemetry.length > 0) {
       const reactorUrl = `${supabaseUrl}/functions/v1/flowpulse-reactor`;

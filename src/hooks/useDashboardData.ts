@@ -133,6 +133,9 @@ export function useDashboardData(dashboardId: string | null, pollIntervalOverrid
       widget_type: w.widget_type,
       query: w.query,
       adapter: w.adapter,
+      time_range: (w.config as any)?.time_range || (w as any).extra?.time_range || "",
+      series: (w.config as any)?.series || (w as any).extra?.series || [],
+      telemetry_keys: (w.config as any)?.telemetry_keys || (w as any).extra?.telemetry_keys || [],
     }));
 
     inflightRef.current = true;

@@ -85,7 +85,7 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
       case "gauge":
         return <GaugeWidget telemetryKey={telemetryKey} title={title} cache={cache} config={config} compact={compact} />;
       case "timeseries":
-        return <TimeseriesWidget telemetryKey={telemetryKey} title={title} cache={cache} />;
+        return <TimeseriesWidget telemetryKey={telemetryKey} title={title} cache={cache} config={config} />;
       case "table":
         return <TableWidget telemetryKey={telemetryKey} title={title} cache={cache} />;
       case "text":
