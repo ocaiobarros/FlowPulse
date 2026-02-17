@@ -12,6 +12,8 @@ import WidgetPalette from "@/components/builder/WidgetPalette";
 import WidgetConfigPanel from "@/components/builder/WidgetConfigPanel";
 import WidgetPreviewCard from "@/components/builder/WidgetPreviewCard";
 import DashboardSettingsPanel from "@/components/builder/DashboardSettingsPanel";
+import PresetGallery from "@/components/builder/PresetGallery";
+import type { DashboardPreset } from "@/data/dashboardPresets";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -140,6 +142,20 @@ export default function DashboardBuilder() {
     setSelectedWidgetId(widget.id);
     setSidebarMode("config");
   }, [pushHistory]);
+
+  const loadPreset = useCallback((preset: DashboardPreset) => {
+    pushHistory();
+    setConfig((prev) => ({
+      ...prev,
+      name: prev.name === "Novo Dashboard" ? preset.name : prev.name,
+      description: prev.description || preset.description,
+      widgets: [...prev.widgets, ...preset.widgets],
+      settings: { ...prev.settings, ...preset.settings },
+    }));
+    setSelectedWidgetId(null);
+    setSidebarMode("widgets");
+    toast({ title: `Template "${preset.name}" carregado`, description: `${preset.widgets.length} widgets adicionados ao canvas.` });
+  }, [pushHistory, toast]);
 
   const updateWidget = useCallback((updated: WidgetConfig) => {
     setConfig((prev) => ({
@@ -334,7 +350,13 @@ export default function DashboardBuilder() {
 
               <ScrollArea className="flex-1">
                 <div className="p-3">
-                  {sidebarMode === "widgets" && <WidgetPalette onAddWidget={addWidget} />}
+                  {sidebarMode === "widgets" && (
+                    <>
+                      <PresetGallery onSelect={loadPreset} />
+                      <div className="my-3 border-t border-border/20" />
+                      <WidgetPalette onAddWidget={addWidget} />
+                    </>
+                  )}
                   {sidebarMode === "settings" && (
                     <DashboardSettingsPanel config={config} onUpdate={setConfig} connections={connections} />
                   )}
