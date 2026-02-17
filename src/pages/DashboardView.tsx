@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, ArrowLeft, Settings, Wifi, WifiOff, Volume2, VolumeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
 
 /** Grid: 12 columns, each row = 80px height */

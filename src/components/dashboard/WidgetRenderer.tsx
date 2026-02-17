@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useMemo } from "react";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
 import type { ImageHotspot } from "@/types/builder";
 import { extractRawValue, getMappedStatus } from "@/lib/telemetry-utils";
@@ -25,7 +25,7 @@ interface Props {
   onCritical?: (widgetId: string) => void;
 }
 
-export default function WidgetRenderer({ widgetType, widgetId, telemetryKey, title, cache, config, onCritical }: Props) {
+function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache, config, onCritical }: Props) {
   const prevCriticalRef = useRef(false);
 
   const entry = cache.get(telemetryKey);
@@ -97,3 +97,6 @@ export default function WidgetRenderer({ widgetType, widgetId, telemetryKey, tit
 
   return <div className={wrapperClass}>{inner}</div>;
 }
+
+const WidgetRenderer = memo(WidgetRendererInner);
+export default WidgetRenderer;
