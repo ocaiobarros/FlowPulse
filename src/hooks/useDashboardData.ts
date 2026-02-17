@@ -83,9 +83,16 @@ export function useDashboardData(dashboardId: string | null, pollIntervalOverrid
   // Seed cache from replay once widgets are loaded + persist metadata to IndexedDB
   useEffect(() => {
     if (!dashboard?.widgets?.length || !dashboardId) return;
-    const keys = dashboard.widgets
-      .map((w) => w.adapter?.telemetry_key || `zbx:widget:${w.id}`)
-      .filter(Boolean);
+    const keys: string[] = [];
+    for (const w of dashboard.widgets) {
+      const mainKey = w.adapter?.telemetry_key || `zbx:widget:${w.id}`;
+      if (mainKey) keys.push(mainKey);
+      // Include all series keys for multi-series widgets
+      const extraKeys = ((w.config as any)?.extra?.telemetry_keys || (w.config as any)?.telemetry_keys || []) as string[];
+      for (const k of extraKeys) {
+        if (k && !keys.includes(k)) keys.push(k);
+      }
+    }
     if (keys.length === 0) return;
 
     // Persist metadata to IndexedDB for instant future loads

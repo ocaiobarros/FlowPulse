@@ -35,8 +35,9 @@ function roundToMinute(ts: number): number {
 }
 
 function TimeseriesWidgetInner({ telemetryKey, title, cache, config }: Props) {
-  const series = (config?.series as SeriesConfig[]) || [];
-  const timeRange = (config?.time_range as string) || "";
+  const extra = config?.extra as Record<string, unknown> | undefined;
+  const series = (extra?.series as SeriesConfig[]) || (config?.series as SeriesConfig[]) || [];
+  const timeRange = (extra?.time_range as string) || (config?.time_range as string) || "";
   const isMultiSeries = series.length > 1;
 
   const { data } = useWidgetData({ telemetryKey, cache });

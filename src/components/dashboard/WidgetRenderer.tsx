@@ -58,7 +58,8 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
   const needsData = !["label", "text"].includes(widgetType);
   const hasMultiSeriesData = (() => {
     if (widgetType !== "timeseries") return false;
-    const series = (config?.series as Array<{ itemid: string }>) || [];
+    const extra = config?.extra as Record<string, unknown> | undefined;
+    const series = (extra?.series as Array<{ itemid: string }>) || (config?.series as Array<{ itemid: string }>) || [];
     if (series.length === 0) return false;
     return series.some((s) => cache.has(`zbx:item:${s.itemid}`));
   })();
