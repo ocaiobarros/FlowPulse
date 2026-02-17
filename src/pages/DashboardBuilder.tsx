@@ -336,6 +336,7 @@ export default function DashboardBuilder() {
                       widget={selectedWidget}
                       onUpdate={updateWidget}
                       onDelete={deleteWidget}
+                      connectionId={config.zabbix_connection_id}
                       onClose={() => {
                         setSelectedWidgetId(null);
                         setSidebarMode("widgets");
@@ -432,6 +433,7 @@ export default function DashboardBuilder() {
                 widget={selectedWidget}
                 onUpdate={updateWidget}
                 onDelete={deleteWidget}
+                connectionId={config.zabbix_connection_id}
                 onClose={() => setSelectedWidgetId(null)}
               />
             </motion.aside>

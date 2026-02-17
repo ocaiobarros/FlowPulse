@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Plus, Trash2, Target } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import ColorMapEditor from "./ColorMapEditor";
 
 interface Props {
   imageUrl: string;
@@ -168,7 +169,7 @@ export default function HotspotEditor({ imageUrl, hotspots, onChange }: Props) {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[9px] text-muted-foreground">Cor padrão</Label>
+                    <Label className="text-[9px] text-muted-foreground">Cor padrão (sem match)</Label>
                     <Input
                       type="color"
                       value={h.default_color || "#39FF14"}
@@ -176,6 +177,13 @@ export default function HotspotEditor({ imageUrl, hotspots, onChange }: Props) {
                       className="h-6 w-10 p-0 border-0"
                     />
                   </div>
+                  {/* Color Map per hotspot */}
+                  <ColorMapEditor
+                    colorMap={h.color_map || {}}
+                    onChange={(map) => updateHotspot(h.id, { color_map: map })}
+                    defaultColor={h.default_color || "#39FF14"}
+                    onDefaultColorChange={(c) => updateHotspot(h.id, { default_color: c })}
+                  />
                   <div className="text-[8px] text-muted-foreground/70">
                     Pos: {h.x.toFixed(1)}% x {h.y.toFixed(1)}%
                   </div>
