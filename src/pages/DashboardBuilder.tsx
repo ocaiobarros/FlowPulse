@@ -305,7 +305,7 @@ export default function DashboardBuilder() {
           {sidebarOpen && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 380, opacity: 1 }}
+              animate={{ width: 420, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="border-r border-border/30 flex flex-col h-full overflow-x-auto overflow-y-auto flex-shrink-0 bg-card/50"
@@ -360,7 +360,7 @@ export default function DashboardBuilder() {
         <button
           onClick={() => setSidebarOpen((v) => !v)}
           className="absolute left-0 top-14 z-30 glass-card p-1.5 rounded-r-md border border-l-0 border-border/30 text-muted-foreground hover:text-foreground transition-colors"
-          style={{ left: sidebarOpen ? 380 : 0 }}
+          style={{ left: sidebarOpen ? 420 : 0 }}
         >
           {sidebarOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
         </button>
@@ -432,7 +432,7 @@ export default function DashboardBuilder() {
           {selectedWidget && !sidebarOpen && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 380, opacity: 1 }}
+              animate={{ width: 420, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               className="border-l border-border/30 bg-card/50 flex-shrink-0 overflow-x-auto overflow-y-auto"
             >
