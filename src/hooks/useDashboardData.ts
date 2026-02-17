@@ -27,7 +27,7 @@ interface Dashboard {
   widgets: DashboardWidget[];
 }
 
-export function useDashboardData(dashboardId: string | null) {
+export function useDashboardData(dashboardId: string | null, pollIntervalOverride?: number) {
   const [telemetryCache, setTelemetryCache] = useState<Map<string, TelemetryCacheEntry>>(new Map());
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inflightRef = useRef(false); // congestion control
@@ -166,13 +166,13 @@ export function useDashboardData(dashboardId: string | null) {
     // Initial poll
     pollNow();
 
-    const intervalMs = ((dashboard.settings as Record<string, unknown>)?.poll_interval_seconds as number || 60) * 1000;
+    const intervalMs = (pollIntervalOverride || (dashboard.settings as Record<string, unknown>)?.poll_interval_seconds as number || 60) * 1000;
     pollIntervalRef.current = setInterval(pollNow, intervalMs);
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
-  }, [dashboard?.id, dashboard?.zabbix_connection_id, pollNow]);
+  }, [dashboard?.id, dashboard?.zabbix_connection_id, pollNow, pollIntervalOverride]);
 
   // Clear cache on dashboard switch
   useEffect(() => {

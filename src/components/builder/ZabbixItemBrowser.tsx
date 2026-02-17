@@ -5,14 +5,22 @@ import Fuse from "fuse.js";
 import { supabase } from "@/integrations/supabase/client";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Search, Server, FolderTree, Activity, ChevronDown, Check } from "lucide-react";
+import { Search, Server, FolderTree, Activity, ChevronDown, Check, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getNavCache, setNavCache } from "@/lib/metadata-cache";
 
 interface ZabbixItemBrowserProps {
   connectionId: string | null;
   selectedItemId?: string;
-  onSelectItem: (item: { itemid: string; key_: string; name: string; lastvalue?: string; units?: string }) => void;
+  /** Pre-select group on mount */
+  initialGroupId?: string;
+  /** Pre-select host on mount */
+  initialHostId?: string;
+  /** Display names for breadcrumb */
+  initialGroupName?: string;
+  initialHostName?: string;
+  initialItemName?: string;
+  onSelectItem: (item: { itemid: string; key_: string; name: string; lastvalue?: string; units?: string }, context: { groupId: string; hostId: string; groupName: string; hostName: string }) => void;
 }
 
 interface ZabbixGroup { groupid: string; name: string; }
@@ -50,26 +58,13 @@ async function zabbixProxyPaginated(connectionId: string, method: string, basePa
 }
 
 const FUSE_OPTIONS = { keys: ["name", "key_"], threshold: 0.4, ignoreLocation: true };
-const FUSE_NAME_OPTIONS = { keys: ["name"], threshold: 0.3, ignoreLocation: true };
 
 // ── Virtualized Select Dropdown ──
 
 function VirtualSelect<T extends { id: string; label: string }>({
-  items,
-  value,
-  onChange,
-  placeholder,
-  isLoading,
-  icon: Icon,
-  label,
+  items, value, onChange, placeholder, isLoading, icon: Icon, label,
 }: {
-  items: T[];
-  value: string;
-  onChange: (id: string) => void;
-  placeholder: string;
-  isLoading: boolean;
-  icon: React.ElementType;
-  label: string;
+  items: T[]; value: string; onChange: (id: string) => void; placeholder: string; isLoading: boolean; icon: React.ElementType; label: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -91,7 +86,6 @@ function VirtualSelect<T extends { id: string; label: string }>({
 
   const selectedLabel = items.find((i) => i.id === value)?.label;
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -121,7 +115,6 @@ function VirtualSelect<T extends { id: string; label: string }>({
 
         {open && (
           <div className="absolute z-50 top-[calc(100%+4px)] left-0 w-full bg-popover border border-border rounded-md shadow-lg overflow-hidden" style={{ maxHeight: 280 }}>
-            {/* Search inside dropdown */}
             <div className="p-1.5 border-b border-border/30">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
@@ -170,12 +163,22 @@ function VirtualSelect<T extends { id: string; label: string }>({
 
 // ── Main Component ──
 
-export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSelectItem }: ZabbixItemBrowserProps) {
-  const [selectedGroup, setSelectedGroup] = useState("");
-  const [selectedHost, setSelectedHost] = useState("");
+export default function ZabbixItemBrowser({ connectionId, selectedItemId, initialGroupId, initialHostId, initialGroupName, initialHostName, initialItemName, onSelectItem }: ZabbixItemBrowserProps) {
+  const [selectedGroup, setSelectedGroup] = useState(initialGroupId || "");
+  const [selectedHost, setSelectedHost] = useState(initialHostId || "");
   const [itemSearch, setItemSearch] = useState("");
   const parentRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const initializedRef = useRef(false);
+
+  // Sync initial values when they change (e.g. opening a different widget)
+  useEffect(() => {
+    if (initialGroupId && !initializedRef.current) {
+      setSelectedGroup(initialGroupId);
+      if (initialHostId) setSelectedHost(initialHostId);
+      initializedRef.current = true;
+    }
+  }, [initialGroupId, initialHostId]);
 
   // ── Groups with IndexedDB SWR ──
   const groupsCacheKey = `groups:${connectionId}`;
@@ -183,20 +186,14 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
     queryKey: ["zabbix-groups", connectionId],
     queryFn: async () => {
       const result = await zabbixProxyPaginated(connectionId!, "hostgroup.get", { output: ["groupid", "name"], sortfield: "name" });
-      // Persist to IndexedDB
       setNavCache(groupsCacheKey, result).catch(() => {});
       return result;
     },
     enabled: !!connectionId,
     staleTime: 5 * 60 * 1000,
-    placeholderData: () => {
-      // Try IndexedDB instant load — will be replaced by fresh data
-      return undefined;
-    },
     select: (d) => (d as ZabbixGroup[]) || [],
   });
 
-  // Seed from IndexedDB on mount
   useEffect(() => {
     if (!connectionId) return;
     getNavCache(groupsCacheKey).then((cached) => {
@@ -220,7 +217,6 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
     select: (d) => (d as ZabbixHost[]) || [],
   });
 
-  // Seed hosts from IndexedDB
   useEffect(() => {
     if (!connectionId || !selectedGroup) return;
     getNavCache(hostsCacheKey).then((cached) => {
@@ -239,9 +235,17 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
     select: (d) => (d as ZabbixItem[]) || [],
   });
 
-  // Reset downstream
-  useEffect(() => { setSelectedHost(""); }, [selectedGroup]);
-  useEffect(() => { setItemSearch(""); }, [selectedHost]);
+  // Reset downstream only on user-initiated changes (not initial load)
+  const handleGroupChange = useCallback((groupId: string) => {
+    setSelectedGroup(groupId);
+    setSelectedHost("");
+    setItemSearch("");
+  }, []);
+
+  const handleHostChange = useCallback((hostId: string) => {
+    setSelectedHost(hostId);
+    setItemSearch("");
+  }, []);
 
   // Fuzzy search for items
   const fuse = useMemo(() => new Fuse(items, FUSE_OPTIONS), [items]);
@@ -250,7 +254,6 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
     return fuse.search(itemSearch).map((r) => r.item);
   }, [fuse, items, itemSearch]);
 
-  // Virtual scrolling for items
   const virtualizer = useVirtualizer({
     count: filteredItems.length,
     getScrollElement: () => parentRef.current,
@@ -258,11 +261,20 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
     overscan: 5,
   });
 
-  const handleSelect = useCallback((item: ZabbixItem) => {
-    onSelectItem(item);
-  }, [onSelectItem]);
+  // Resolve display names
+  const groupName = groups.find(g => g.groupid === selectedGroup)?.name || initialGroupName || "";
+  const hostName = hosts.find(h => h.hostid === selectedHost)?.name || initialHostName || "";
+  const selectedItemName = items.find(i => i.itemid === selectedItemId)?.name || initialItemName || "";
 
-  // Map to VirtualSelect format
+  const handleSelect = useCallback((item: ZabbixItem) => {
+    onSelectItem(item, {
+      groupId: selectedGroup,
+      hostId: selectedHost,
+      groupName,
+      hostName,
+    });
+  }, [onSelectItem, selectedGroup, selectedHost, groupName, hostName]);
+
   const groupOptions = useMemo(() => groups.map((g) => ({ id: g.groupid, label: g.name })), [groups]);
   const hostOptions = useMemo(() => hosts.map((h) => ({ id: h.hostid, label: h.name || h.host })), [hosts]);
 
@@ -282,11 +294,21 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
         <div className="text-[9px] text-neon-red p-2 border border-neon-red/30 rounded-md bg-neon-red/5">{error}</div>
       )}
 
+      {/* Breadcrumb — active path */}
+      {(groupName || hostName || selectedItemName) && (
+        <div className="flex items-center gap-1 text-[9px] font-mono px-2 py-1.5 rounded-md bg-primary/5 border border-primary/20 overflow-hidden">
+          <span className="text-primary">📍</span>
+          {groupName && <span className="text-muted-foreground truncate max-w-[30%]">{groupName}</span>}
+          {hostName && <><ChevronRight className="w-3 h-3 text-muted-foreground/50 shrink-0" /><span className="text-foreground truncate max-w-[30%]">{hostName}</span></>}
+          {selectedItemName && <><ChevronRight className="w-3 h-3 text-muted-foreground/50 shrink-0" /><span className="text-primary truncate max-w-[30%]">{selectedItemName}</span></>}
+        </div>
+      )}
+
       {/* Host Group — Virtualized */}
       <VirtualSelect
         items={groupOptions}
         value={selectedGroup}
-        onChange={setSelectedGroup}
+        onChange={handleGroupChange}
         placeholder="Selecionar grupo"
         isLoading={loadingGroups && groups.length === 0}
         icon={FolderTree}
@@ -297,7 +319,7 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
       <VirtualSelect
         items={hostOptions}
         value={selectedHost}
-        onChange={setSelectedHost}
+        onChange={handleHostChange}
         placeholder={!selectedGroup ? "Selecione um grupo primeiro" : "Selecionar host"}
         isLoading={loadingHosts && hosts.length === 0}
         icon={Server}
