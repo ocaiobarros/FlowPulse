@@ -211,7 +211,7 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
               <Loader2 className="w-4 h-4 animate-spin text-neon-green" />
             </div>
           ) : (
-            <ScrollArea className="max-h-[220px] border border-border/30 rounded-md overflow-x-auto">
+            <ScrollArea className="h-[400px] border border-border/30 rounded-md overflow-x-auto">
               <div className="p-1 space-y-0.5 min-w-0">
                 {filteredItems.map((item) => (
                   <button
