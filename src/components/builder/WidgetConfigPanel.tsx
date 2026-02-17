@@ -14,12 +14,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trash2, X, Search, Palette, Type, Sparkles, Database, Settings2, ImageIcon } from "lucide-react";
+import ZabbixItemBrowser from "./ZabbixItemBrowser";
+import ColorMapEditor from "./ColorMapEditor";
 
 interface Props {
   widget: WidgetConfig;
   onUpdate: (widget: WidgetConfig) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  /** Zabbix connection ID from dashboard settings */
+  connectionId?: string | null;
 }
 
 function ColorPicker({ value, onChange, label }: { value?: string; onChange: (v: string) => void; label: string }) {
@@ -46,7 +50,7 @@ function ColorPicker({ value, onChange, label }: { value?: string; onChange: (v:
   );
 }
 
-export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose }: Props) {
+export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose, connectionId }: Props) {
   const [iconSearch, setIconSearch] = useState("");
 
   const updateStyle = (patch: Partial<WidgetStyle>) => {
@@ -321,6 +325,43 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose 
               <Input value={widget.widget_type} disabled className="h-7 text-xs" />
             </div>
 
+            {/* ── Zabbix Item Browser ── */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] text-neon-green font-display uppercase tracking-wider">
+                🔗 Navegar Zabbix
+              </Label>
+              <ZabbixItemBrowser
+                connectionId={connectionId || null}
+                selectedItemId={(widget.query.params as Record<string, unknown>)?.itemids?.[0] as string}
+                onSelectItem={(item) => {
+                  onUpdate({
+                    ...widget,
+                    adapter: {
+                      ...widget.adapter,
+                      telemetry_key: `zbx:item:${item.itemid}`,
+                      value_field: "lastvalue",
+                    },
+                    query: {
+                      ...widget.query,
+                      method: "item.get",
+                      params: {
+                        ...widget.query.params,
+                        itemids: [item.itemid],
+                        output: ["itemid", "name", "lastvalue", "units", "key_", "value_type"],
+                      },
+                    },
+                    extra: {
+                      ...widget.extra,
+                      zabbix_item_name: item.name,
+                      zabbix_item_key: item.key_,
+                    },
+                  });
+                }}
+              />
+            </div>
+
+            <div className="h-px bg-border/30" />
+
             <div className="space-y-1.5">
               <Label className="text-[10px] text-muted-foreground">Telemetry Key</Label>
               <Input
@@ -329,6 +370,11 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose 
                 placeholder="zbx:item:12345"
                 className="h-7 text-[9px] font-mono"
               />
+              {widget.extra?.zabbix_item_name && (
+                <p className="text-[8px] text-neon-green/60 font-mono truncate">
+                  📡 {widget.extra.zabbix_item_name as string}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -368,6 +414,16 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose 
                 className="h-7 text-xs font-mono"
               />
             </div>
+
+            <div className="h-px bg-border/30" />
+
+            {/* ── Color Mapping ── */}
+            <ColorMapEditor
+              colorMap={(widget.extra?.color_map as Record<string, string>) || {}}
+              onChange={(map) => onUpdate({ ...widget, extra: { ...widget.extra, color_map: map } })}
+              defaultColor={(widget.extra?.default_color as string) || "#A0A0A0"}
+              onDefaultColorChange={(c) => onUpdate({ ...widget, extra: { ...widget.extra, default_color: c } })}
+            />
           </TabsContent>
         </Tabs>
       </ScrollArea>
