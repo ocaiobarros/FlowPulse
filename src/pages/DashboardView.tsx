@@ -77,15 +77,21 @@ export default function DashboardView() {
 
   const themeCategory = (dashboard?.settings as any)?.category || "";
 
+  const isLightTheme = themeCategory === "cameras";
+
   return (
     <div
-      className="min-h-screen grid-pattern scanlines relative p-4 md:p-6 lg:p-8"
+      className={`min-h-screen grid-pattern scanlines relative p-4 md:p-6 lg:p-8 ${isLightTheme ? 'text-foreground' : ''}`}
       data-theme-category={themeCategory}
       style={{ background: 'var(--category-bg, linear-gradient(180deg, hsl(228 30% 4%) 0%, hsl(230 35% 2%) 100%))' }}
     >
-      {/* Ambient glow — two blobs with category color */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] rounded-full blur-[140px] pointer-events-none opacity-60" style={{ background: 'hsl(var(--primary) / 0.15)' }} />
-      <div className="fixed bottom-0 right-0 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none opacity-40" style={{ background: 'hsl(var(--primary) / 0.08)' }} />
+      {/* Ambient glow — hidden for light themes */}
+      {!isLightTheme && (
+        <>
+          <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] rounded-full blur-[140px] pointer-events-none opacity-60" style={{ background: 'hsl(var(--primary) / 0.15)' }} />
+          <div className="fixed bottom-0 right-0 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none opacity-40" style={{ background: 'hsl(var(--primary) / 0.08)' }} />
+        </>
+      )}
 
       <div className="max-w-[1600px] mx-auto relative z-10">
         {/* Header */}

@@ -289,6 +289,57 @@
     --category-border-width: 1px;
     --category-widget-gap: 10px;
   }
+
+  /* ══════════════════════════════════════════════════════
+     CAMERAS / CFTV — LIGHT SURVEILLANCE MONITOR THEME
+     Radically different: white/ice-gray background,
+     solid dark borders, professional CCTV aesthetic
+     ══════════════════════════════════════════════════════ */
+  [data-theme-category="cameras"] {
+    --background: 220 16% 96%;
+    --foreground: 220 20% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 20% 10%;
+    --muted: 220 12% 90%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 220 14% 94%;
+    --accent-foreground: 220 20% 10%;
+    --primary: 220 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --destructive: 0 85% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 75%;
+    --input: 220 15% 75%;
+    --ring: 220 70% 45%;
+    --neon-green: 142 70% 40%;
+    --neon-red: 0 80% 50%;
+    --neon-amber: 36 90% 50%;
+    --neon-blue: 220 70% 45%;
+    --neon-cyan: 200 70% 45%;
+    --category-accent: 220 70% 45%;
+    --category-accent-alt: 220 60% 55%;
+    --category-glow: hsl(220 70% 45% / 0.06);
+    --category-bg: linear-gradient(180deg, hsl(220 16% 96%) 0%, hsl(215 18% 91%) 100%);
+    --category-card-border: hsl(220 15% 25% / 0.6);
+    --category-card-bg: hsl(0 0% 100%);
+    --category-card-shadow: 0 1px 3px hsl(220 20% 10% / 0.08), 0 4px 12px hsl(220 20% 10% / 0.04);
+    --category-blur: 0px;
+    --category-border-width: 2px;
+    --category-widget-gap: 6px;
+
+    --sidebar-background: 220 16% 96%;
+    --sidebar-foreground: 220 20% 10%;
+    --sidebar-primary: 220 70% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 92%;
+    --sidebar-accent-foreground: 220 20% 10%;
+    --sidebar-border: 220 15% 75%;
+    --sidebar-ring: 220 70% 45%;
+  }
 }
 
 @layer base {
@@ -483,4 +534,56 @@
   .font-mono-data {
     font-family: 'JetBrains Mono', monospace;
   }
+}
+
+/* ══════════════════════════════════════════════════════
+   CAMERAS THEME — Override dark utilities for light mode
+   These rules sit OUTSIDE @layer to override @layer utilities
+   ══════════════════════════════════════════════════════ */
+[data-theme-category="cameras"] .glass-card,
+[data-theme-category="cameras"] .glass-card-elevated {
+  background: hsl(0 0% 100%) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 2px solid hsl(220 15% 25% / 0.5) !important;
+  box-shadow: 0 1px 3px hsl(220 20% 10% / 0.08), 0 4px 12px hsl(220 20% 10% / 0.04) !important;
+  border-radius: 4px !important;
+}
+
+[data-theme-category="cameras"] .grid-pattern {
+  background-image:
+    linear-gradient(hsl(220 15% 80% / 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(220 15% 80% / 0.3) 1px, transparent 1px) !important;
+}
+
+[data-theme-category="cameras"] .scanlines::after {
+  background: none !important;
+}
+
+[data-theme-category="cameras"] .glow-green,
+[data-theme-category="cameras"] .glow-red,
+[data-theme-category="cameras"] .glow-amber,
+[data-theme-category="cameras"] .glow-blue,
+[data-theme-category="cameras"] .glow-cyan {
+  box-shadow: 0 1px 3px hsl(220 20% 10% / 0.08), 0 4px 12px hsl(220 20% 10% / 0.04) !important;
+}
+
+[data-theme-category="cameras"] .text-glow-green,
+[data-theme-category="cameras"] .text-glow-red,
+[data-theme-category="cameras"] .text-glow-amber,
+[data-theme-category="cameras"] .text-glow-cyan,
+[data-theme-category="cameras"] .text-glow-blue {
+  text-shadow: none !important;
+}
+
+[data-theme-category="cameras"] ::-webkit-scrollbar-track {
+  background: hsl(220 16% 96%);
+}
+
+[data-theme-category="cameras"] ::-webkit-scrollbar-thumb {
+  background: hsl(220 15% 75%);
+}
+
+[data-theme-category="cameras"] ::-webkit-scrollbar-thumb:hover {
+  background: hsl(220 15% 55%);
 }
