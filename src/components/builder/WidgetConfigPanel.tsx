@@ -339,11 +339,66 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose,
               <Input value={widget.widget_type} disabled className="h-7 text-xs" />
             </div>
 
+            {/* ── Time Range Selector ── */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] text-muted-foreground">Período de Histórico</Label>
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { label: "Atual", value: "" },
+                  { label: "1h", value: "1h" },
+                  { label: "3h", value: "3h" },
+                  { label: "6h", value: "6h" },
+                  { label: "12h", value: "12h" },
+                  { label: "24h", value: "24h" },
+                  { label: "7d", value: "7d" },
+                  { label: "30d", value: "30d" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onUpdate({ ...widget, extra: { ...widget.extra, time_range: opt.value } })}
+                    className={`px-2 py-0.5 rounded text-[9px] font-mono transition-all ${
+                      (widget.extra?.time_range || "") === opt.value
+                        ? "bg-primary/20 text-primary border border-primary/30"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent/30 border border-border/30"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* ── Zabbix Item Browser ── */}
             <div className="space-y-1.5">
               <Label className="text-[10px] text-neon-green font-display uppercase tracking-wider">
                 🔗 Navegar Zabbix
               </Label>
+
+              {/* Multi-series chips */}
+              {((widget.extra?.series as Array<{ itemid: string; name: string; key_: string; color: string }>) || []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {((widget.extra?.series as Array<{ itemid: string; name: string; key_: string; color: string }>) || []).map((s, idx) => (
+                    <div key={s.itemid} className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-mono border border-border/40 bg-accent/20">
+                      <div className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                      <span className="truncate max-w-[120px]">{s.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const series = ((widget.extra?.series as Array<{ itemid: string; name: string; key_: string; color: string }>) || []).filter((_, i) => i !== idx);
+                          const telemetryKeys = series.map((s) => `zbx:item:${s.itemid}`);
+                          onUpdate({
+                            ...widget,
+                            extra: { ...widget.extra, series, telemetry_keys: telemetryKeys },
+                          });
+                        }}
+                        className="text-muted-foreground hover:text-destructive"
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <ZabbixItemBrowser
                 connectionId={connectionId || null}
                 selectedItemId={(widget.query.params as Record<string, unknown>)?.itemids?.[0] as string}
@@ -352,33 +407,79 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose,
                 initialGroupName={(widget.extra?.zabbix_group_name as string) || undefined}
                 initialHostName={(widget.extra?.zabbix_host_name as string) || undefined}
                 initialItemName={(widget.extra?.zabbix_item_name as string) || undefined}
+                multiSelect={widget.widget_type === "timeseries"}
+                selectedSeries={((widget.extra?.series as Array<{ itemid: string }>) || []).map(s => s.itemid)}
                 onSelectItem={(item, context) => {
-                  onUpdate({
-                    ...widget,
-                    adapter: {
-                      ...widget.adapter,
-                      telemetry_key: `zbx:item:${item.itemid}`,
-                      value_field: "lastvalue",
-                    },
-                    query: {
-                      ...widget.query,
-                      method: "item.get",
-                      params: {
-                        ...widget.query.params,
-                        itemids: [item.itemid],
-                        hostids: [context.hostId],
-                        output: ["itemid", "name", "lastvalue", "units", "key_", "value_type"],
+                  // For timeseries multi-select: add to series array
+                  if (widget.widget_type === "timeseries") {
+                    const SERIES_COLORS = ["#3B82F6", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899", "#F97316"];
+                    const existingSeries = (widget.extra?.series as Array<{ itemid: string; name: string; key_: string; color: string }>) || [];
+                    // If already exists, don't add duplicate
+                    if (existingSeries.some(s => s.itemid === item.itemid)) return;
+                    const newSeries = [...existingSeries, {
+                      itemid: item.itemid,
+                      name: item.name,
+                      key_: item.key_,
+                      color: SERIES_COLORS[existingSeries.length % SERIES_COLORS.length],
+                    }];
+                    const telemetryKeys = newSeries.map(s => `zbx:item:${s.itemid}`);
+                    onUpdate({
+                      ...widget,
+                      adapter: {
+                        ...widget.adapter,
+                        telemetry_key: `zbx:item:${newSeries[0].itemid}`,
+                        value_field: "lastvalue",
                       },
-                    },
-                    extra: {
-                      ...widget.extra,
-                      zabbix_item_name: item.name,
-                      zabbix_item_key: item.key_,
-                      zabbix_group_id: context.groupId,
-                      zabbix_group_name: context.groupName,
-                      zabbix_host_name: context.hostName,
-                    },
-                  });
+                      query: {
+                        ...widget.query,
+                        method: "item.get",
+                        params: {
+                          ...widget.query.params,
+                          itemids: newSeries.map(s => s.itemid),
+                          hostids: [context.hostId],
+                          output: ["itemid", "name", "lastvalue", "units", "key_", "value_type"],
+                        },
+                      },
+                      extra: {
+                        ...widget.extra,
+                        series: newSeries,
+                        telemetry_keys: telemetryKeys,
+                        zabbix_item_name: newSeries.map(s => s.name).join(", "),
+                        zabbix_item_key: item.key_,
+                        zabbix_group_id: context.groupId,
+                        zabbix_group_name: context.groupName,
+                        zabbix_host_name: context.hostName,
+                      },
+                    });
+                  } else {
+                    // Single item (original behavior)
+                    onUpdate({
+                      ...widget,
+                      adapter: {
+                        ...widget.adapter,
+                        telemetry_key: `zbx:item:${item.itemid}`,
+                        value_field: "lastvalue",
+                      },
+                      query: {
+                        ...widget.query,
+                        method: "item.get",
+                        params: {
+                          ...widget.query.params,
+                          itemids: [item.itemid],
+                          hostids: [context.hostId],
+                          output: ["itemid", "name", "lastvalue", "units", "key_", "value_type"],
+                        },
+                      },
+                      extra: {
+                        ...widget.extra,
+                        zabbix_item_name: item.name,
+                        zabbix_item_key: item.key_,
+                        zabbix_group_id: context.groupId,
+                        zabbix_group_name: context.groupName,
+                        zabbix_host_name: context.hostName,
+                      },
+                    });
+                  }
                 }}
               />
             </div>
