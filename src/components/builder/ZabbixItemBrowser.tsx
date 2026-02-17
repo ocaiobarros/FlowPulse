@@ -174,7 +174,6 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
   const [selectedGroup, setSelectedGroup] = useState("");
   const [selectedHost, setSelectedHost] = useState("");
   const [itemSearch, setItemSearch] = useState("");
-  const [showItems, setShowItems] = useState(true);
   const parentRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -242,7 +241,7 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
 
   // Reset downstream
   useEffect(() => { setSelectedHost(""); }, [selectedGroup]);
-  useEffect(() => { setShowItems(true); setItemSearch(""); }, [selectedHost]);
+  useEffect(() => { setItemSearch(""); }, [selectedHost]);
 
   // Fuzzy search for items
   const fuse = useMemo(() => new Fuse(items, FUSE_OPTIONS), [items]);
@@ -261,7 +260,6 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
 
   const handleSelect = useCallback((item: ZabbixItem) => {
     onSelectItem(item);
-    setShowItems(false);
   }, [onSelectItem]);
 
   // Map to VirtualSelect format
@@ -307,7 +305,7 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
       />
 
       {/* Items — Virtualized List with Fuzzy Search */}
-      {selectedHost && showItems && (
+      {selectedHost && (
         <div className="space-y-1">
           <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
             <Activity className="w-3 h-3" /> Item ({filteredItems.length})
