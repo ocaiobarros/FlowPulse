@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { useWidgetData } from "@/hooks/useWidgetData";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
 import { extractRawValue, getMappedStatus } from "@/lib/telemetry-utils";
-import DynamicIcon from "@/components/builder/DynamicIcon";
+import AnimatedIcon from "./AnimatedIcon";
 
 interface Props {
   telemetryKey: string;
@@ -21,6 +21,7 @@ export default function IconValueWidget({ telemetryKey, title, cache, config }: 
 
   const iconName = (config?.style as any)?.icon || (config?.extra as any)?.icon || "Activity";
   const unit = (data as any)?.unit || "";
+  const numValue = rawValue !== null ? parseFloat(String(rawValue)) : null;
 
   return (
     <motion.div
@@ -32,10 +33,13 @@ export default function IconValueWidget({ telemetryKey, title, cache, config }: 
         {title}
       </span>
       <div className="flex items-center gap-3">
-        <DynamicIcon
-          name={iconName}
-          className="w-8 h-8"
-          style={{ color: status.color, filter: `drop-shadow(0 0 6px ${status.color}80)` }}
+        <AnimatedIcon
+          iconName={iconName}
+          color={status.color}
+          size="w-8 h-8"
+          value={numValue}
+          isCritical={status.isCritical}
+          isHealthy={!status.isCritical && rawValue !== null}
         />
         <div className="text-right">
           <div className="text-xl font-bold font-mono" style={{ color: status.color }}>
