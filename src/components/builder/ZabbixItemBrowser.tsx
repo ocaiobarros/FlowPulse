@@ -216,16 +216,16 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
                 {filteredItems.map((item) => (
                   <button
                     key={item.itemid}
-                    onClick={() => onSelectItem(item)}
+                    onClick={() => { onSelectItem(item); setItems([]); setSelectedHost(""); }}
                     className={`w-full text-left p-1.5 rounded transition-all text-[9px] ${
                       selectedItemId === item.itemid
                         ? "bg-neon-green/15 border border-neon-green/40 text-neon-green"
                         : "hover:bg-accent/40 border border-transparent"
                     }`}
                   >
-                    <div className="font-medium whitespace-nowrap overflow-x-auto">{item.name}</div>
+                    <div className="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</div>
                     <div className="flex items-center justify-between text-muted-foreground mt-0.5 whitespace-nowrap">
-                      <span className="font-mono overflow-x-auto max-w-[60%]">{item.key_}</span>
+                      <span className="font-mono overflow-hidden text-ellipsis max-w-[60%]">{item.key_}</span>
                       <span className="font-mono text-neon-green/70">
                         {item.lastvalue !== undefined ? `${item.lastvalue}${item.units || ""}` : "—"}
                       </span>
