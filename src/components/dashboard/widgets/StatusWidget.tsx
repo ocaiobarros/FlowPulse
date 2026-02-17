@@ -1,9 +1,8 @@
 import { motion } from "framer-motion";
-import { Icon } from "@iconify/react";
 import { useWidgetData } from "@/hooks/useWidgetData";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
 import { getMappedStatus, extractRawValue } from "@/lib/telemetry-utils";
-import DynamicIcon from "@/components/builder/DynamicIcon";
+import AnimatedIcon from "./AnimatedIcon";
 
 interface Props {
   telemetryKey: string;
@@ -21,7 +20,7 @@ export default function StatusWidget({ telemetryKey, title, cache, config }: Pro
   const status = getMappedStatus(rawValue, colorMap, defaultColor, "Aguardando…");
 
   const iconName = (config?.style as any)?.icon || "";
-  const isInfraIcon = iconName.includes(":");
+  const numValue = rawValue !== null ? parseFloat(String(rawValue)) : null;
 
   return (
     <motion.div
@@ -34,16 +33,14 @@ export default function StatusWidget({ telemetryKey, title, cache, config }: Pro
       </span>
       <div className="flex items-center gap-2">
         {iconName ? (
-          <motion.div
-            animate={status.isCritical ? { scale: [1, 1.15, 1] } : {}}
-            transition={status.isCritical ? { duration: 0.8, repeat: Infinity } : {}}
-          >
-            {isInfraIcon ? (
-              <Icon icon={iconName} className="w-6 h-6" style={{ color: status.color }} />
-            ) : (
-              <DynamicIcon name={iconName} className="w-6 h-6" style={{ color: status.color }} />
-            )}
-          </motion.div>
+          <AnimatedIcon
+            iconName={iconName}
+            color={status.color}
+            size="w-6 h-6"
+            value={numValue}
+            isCritical={status.isCritical}
+            isHealthy={!status.isCritical && rawValue !== null}
+          />
         ) : (
           <motion.span
             className="w-3.5 h-3.5 rounded-full flex-shrink-0"

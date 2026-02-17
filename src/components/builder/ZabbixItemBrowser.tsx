@@ -162,9 +162,9 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
             <SelectValue placeholder={loadingGroups ? "Carregando…" : "Selecionar grupo"} />
           </SelectTrigger>
           <SelectContent>
-            <ScrollArea className="max-h-[200px]">
+           <ScrollArea className="max-h-[200px]">
               {groups.map((g) => (
-                <SelectItem key={g.groupid} value={g.groupid} className="text-xs">
+                <SelectItem key={g.groupid} value={g.groupid} className="text-xs whitespace-nowrap">
                   {g.name}
                 </SelectItem>
               ))}
@@ -183,9 +183,9 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
             <SelectValue placeholder={loadingHosts ? "Carregando…" : "Selecionar host"} />
           </SelectTrigger>
           <SelectContent>
-            <ScrollArea className="max-h-[200px]">
+           <ScrollArea className="max-h-[200px]">
               {hosts.map((h) => (
-                <SelectItem key={h.hostid} value={h.hostid} className="text-xs">
+                <SelectItem key={h.hostid} value={h.hostid} className="text-xs whitespace-nowrap">
                   {h.name || h.host}
                 </SelectItem>
               ))}
@@ -215,8 +215,8 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
               <Loader2 className="w-4 h-4 animate-spin text-neon-green" />
             </div>
           ) : (
-            <ScrollArea className="max-h-[220px] border border-border/30 rounded-md">
-              <div className="p-1 space-y-0.5">
+            <ScrollArea className="max-h-[220px] border border-border/30 rounded-md overflow-x-auto">
+              <div className="p-1 space-y-0.5 min-w-0">
                 {filteredItems.map((item) => (
                   <button
                     key={item.itemid}
@@ -227,9 +227,9 @@ export default function ZabbixItemBrowser({ connectionId, selectedItemId, onSele
                         : "hover:bg-accent/40 border border-transparent"
                     }`}
                   >
-                    <div className="font-medium truncate">{item.name}</div>
-                    <div className="flex items-center justify-between text-muted-foreground mt-0.5">
-                      <span className="font-mono truncate max-w-[60%]">{item.key_}</span>
+                    <div className="font-medium whitespace-nowrap overflow-x-auto">{item.name}</div>
+                    <div className="flex items-center justify-between text-muted-foreground mt-0.5 whitespace-nowrap">
+                      <span className="font-mono overflow-x-auto max-w-[60%]">{item.key_}</span>
                       <span className="font-mono text-neon-green/70">
                         {item.lastvalue !== undefined ? `${item.lastvalue}${item.units || ""}` : "—"}
                       </span>
