@@ -271,6 +271,7 @@ export default function DashboardBuilder() {
     minH: w.minH || 2,
   }));
 
+  const isLightTheme = (config.settings.category || "") === "cameras";
   const bgStyle: React.CSSProperties = config.settings.bgGradient
     ? { background: config.settings.bgGradient }
     : { background: 'var(--category-bg, linear-gradient(180deg, hsl(228 30% 4%) 0%, hsl(230 35% 2%) 100%))' };
@@ -324,7 +325,7 @@ export default function DashboardBuilder() {
               animate={{ width: 450, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="border-r border-border/30 flex flex-col h-full overflow-hidden overflow-y-auto flex-shrink-0 bg-card/50"
+              className={`border-r border-border/30 flex flex-col h-full overflow-hidden overflow-y-auto flex-shrink-0 ${isLightTheme ? 'bg-background' : 'bg-card/50'}`}
             >
               {/* Sidebar tabs */}
               <div className="flex border-b border-border/30">
@@ -392,8 +393,8 @@ export default function DashboardBuilder() {
           className={`flex-1 overflow-auto relative ${config.settings.showGrid !== false ? "grid-pattern" : ""} ${config.settings.scanlines !== false ? "scanlines" : ""}`}
           style={bgStyle}
         >
-          {/* Ambient glow */}
-          {config.settings.ambientGlow !== false && (
+          {/* Ambient glow — hidden for light themes */}
+          {config.settings.ambientGlow !== false && !isLightTheme && (
             <>
               <div
                 className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full blur-[120px] pointer-events-none"
