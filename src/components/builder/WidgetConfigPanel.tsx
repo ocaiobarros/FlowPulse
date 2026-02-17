@@ -347,7 +347,12 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose,
               <ZabbixItemBrowser
                 connectionId={connectionId || null}
                 selectedItemId={(widget.query.params as Record<string, unknown>)?.itemids?.[0] as string}
-                onSelectItem={(item) => {
+                initialGroupId={(widget.extra?.zabbix_group_id as string) || undefined}
+                initialHostId={(widget.query.params as Record<string, unknown>)?.hostids?.[0] as string || undefined}
+                initialGroupName={(widget.extra?.zabbix_group_name as string) || undefined}
+                initialHostName={(widget.extra?.zabbix_host_name as string) || undefined}
+                initialItemName={(widget.extra?.zabbix_item_name as string) || undefined}
+                onSelectItem={(item, context) => {
                   onUpdate({
                     ...widget,
                     adapter: {
@@ -361,6 +366,7 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose,
                       params: {
                         ...widget.query.params,
                         itemids: [item.itemid],
+                        hostids: [context.hostId],
                         output: ["itemid", "name", "lastvalue", "units", "key_", "value_type"],
                       },
                     },
@@ -368,6 +374,9 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose,
                       ...widget.extra,
                       zabbix_item_name: item.name,
                       zabbix_item_key: item.key_,
+                      zabbix_group_id: context.groupId,
+                      zabbix_group_name: context.groupName,
+                      zabbix_host_name: context.hostName,
                     },
                   });
                 }}

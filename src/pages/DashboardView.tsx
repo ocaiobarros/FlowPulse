@@ -4,15 +4,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import WidgetRenderer from "@/components/dashboard/WidgetRenderer";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, ArrowLeft, Settings, Wifi, WifiOff, Volume2, VolumeOff } from "lucide-react";
+import { RefreshCw, ArrowLeft, Settings, Wifi, WifiOff, Volume2, VolumeOff, Timer } from "lucide-react";
 import { motion } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
 
 /** Grid: 12 columns, each row = 80px height */
 const COL_WIDTH_PERCENT = 100 / 12;
 const ROW_HEIGHT = 80;
+
+const POLL_INTERVALS = [
+  { label: "5s", value: 5 },
+  { label: "10s", value: 10 },
+  { label: "20s", value: 20 },
+  { label: "30s", value: 30 },
+  { label: "60s", value: 60 },
+];
+
+function getPollIntervalKey(dashboardId: string) {
+  return `flowpulse:poll_interval:${dashboardId}`;
+}
 
 export default function DashboardView() {
   const { dashboardId } = useParams<{ dashboardId: string }>();
@@ -41,7 +53,28 @@ export default function DashboardView() {
 
   const activeDashId = dashboardId ?? defaultDashId ?? null;
 
-  const { dashboard, isLoading, error, telemetryCache, pollNow } = useDashboardData(activeDashId);
+  // Poll interval state with localStorage persistence
+  const [pollInterval, setPollInterval] = useState<number>(() => {
+    if (!activeDashId) return 60;
+    const saved = localStorage.getItem(getPollIntervalKey(activeDashId));
+    return saved ? parseInt(saved, 10) : 60;
+  });
+
+  // Sync when dashboard changes
+  useEffect(() => {
+    if (!activeDashId) return;
+    const saved = localStorage.getItem(getPollIntervalKey(activeDashId));
+    if (saved) setPollInterval(parseInt(saved, 10));
+  }, [activeDashId]);
+
+  const handleIntervalChange = useCallback((seconds: number) => {
+    setPollInterval(seconds);
+    if (activeDashId) {
+      localStorage.setItem(getPollIntervalKey(activeDashId), String(seconds));
+    }
+  }, [activeDashId]);
+
+  const { dashboard, isLoading, error, telemetryCache, pollNow } = useDashboardData(activeDashId, pollInterval);
 
   const handlePoll = async () => {
     setIsPolling(true);
@@ -76,7 +109,6 @@ export default function DashboardView() {
   }
 
   const themeCategory = (dashboard?.settings as any)?.category || "";
-
   const isLightTheme = themeCategory === "cameras";
 
   return (
@@ -85,6 +117,18 @@ export default function DashboardView() {
       data-theme-category={themeCategory}
       style={{ background: 'var(--category-bg, linear-gradient(180deg, hsl(228 30% 4%) 0%, hsl(230 35% 2%) 100%))' }}
     >
+      {/* Sync progress bar */}
+      {isPolling && (
+        <div className="fixed top-0 left-0 right-0 h-[2px] z-50">
+          <motion.div
+            className="h-full bg-primary"
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 1, ease: "easeInOut" }}
+          />
+        </div>
+      )}
+
       {/* Ambient glow — hidden for light themes */}
       {!isLightTheme && (
         <>
@@ -123,6 +167,24 @@ export default function DashboardView() {
                 <WifiOff className="w-3 h-3 text-muted-foreground/50" />
               )}
               <span className="font-mono">{telemetryCache.size} keys</span>
+            </div>
+
+            {/* Poll interval selector */}
+            <div className="flex items-center gap-0.5 border border-border/40 rounded-md px-1 py-0.5">
+              <Timer className="w-3 h-3 text-muted-foreground mr-0.5" />
+              {POLL_INTERVALS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleIntervalChange(opt.value)}
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-all ${
+                    pollInterval === opt.value
+                      ? "bg-primary/20 text-primary border border-primary/30"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/30 border border-transparent"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
 
             {/* Audio control */}
@@ -228,7 +290,7 @@ export default function DashboardView() {
         {/* Footer */}
         <div className="text-center py-4 mt-8">
           <p className="text-[10px] font-mono text-muted-foreground/50">
-            FLOWPULSE | Dashboard Viewer • Realtime via Reactor
+            FLOWPULSE | Dashboard Viewer • Realtime via Reactor • Auto-refresh: {pollInterval}s
           </p>
         </div>
       </div>
