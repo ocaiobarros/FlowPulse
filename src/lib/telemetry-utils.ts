@@ -92,8 +92,20 @@ export function getMappedStatus(
  */
 export function extractRawValue(data: unknown): string | null {
   if (data === null || data === undefined) return null;
-  if (typeof data === "object" && data !== null && "value" in (data as Record<string, unknown>)) {
-    return String((data as Record<string, unknown>).value);
+  if (typeof data === "object" && data !== null) {
+    const obj = data as Record<string, unknown>;
+    // Direct value field (stat, gauge, etc.)
+    if ("value" in obj) {
+      return String(obj.value);
+    }
+    // Timeseries data: extract the latest point's value so stat/battery widgets
+    // sharing the same telemetry key don't get NaN
+    if ("points" in obj && Array.isArray(obj.points) && obj.points.length > 0) {
+      const lastPoint = obj.points[obj.points.length - 1] as { value?: unknown };
+      if (lastPoint && "value" in lastPoint) {
+        return String(lastPoint.value);
+      }
+    }
   }
   return String(data);
 }
