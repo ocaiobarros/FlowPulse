@@ -44,7 +44,7 @@ export default function IconValueWidget({ telemetryKey, title, cache, config, co
         />
         <div className="text-right">
           <div className="text-xl font-bold font-mono" style={{ color: status.color }}>
-            {rawValue ?? "—"}
+            {status.label}
           </div>
           {unit && <div className="text-[9px] text-muted-foreground">{unit}</div>}
         </div>

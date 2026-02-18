@@ -51,7 +51,25 @@ export function getMappedStatus(
 
   if (colorMap) {
     const parsed = parseColorMap(colorMap);
-    const entry = parsed[normalized];
+
+    // 1. Exact string match
+    let entry = parsed[normalized];
+
+    // 2. Fuzzy numeric match: "1.000000" → try "1", "1.0", integer form
+    if (!entry && normalized !== "") {
+      const num = Number(normalized);
+      if (!isNaN(num)) {
+        // Try integer key (e.g. "1")
+        const intKey = String(Math.trunc(num));
+        if (num === Math.trunc(num)) {
+          entry = parsed[intKey];
+        }
+        // Try other numeric representations
+        if (!entry) entry = parsed[String(num)];
+        if (!entry) entry = parsed[num.toFixed(1)];
+      }
+    }
+
     if (entry) {
       return {
         color: entry.color,
