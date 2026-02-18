@@ -13,26 +13,24 @@ interface Props {
   compact?: boolean;
 }
 
-/** RGB color stop for lerp interpolation */
 interface RGBStop { t: number; r: number; g: number; b: number }
 
-/** Palette definitions — each is an array of normalized [0→1] RGB stops */
 const PALETTES: Record<string, RGBStop[]> = {
   thermal: [
-    { t: 0,   r: 0,   g: 100, b: 255 }, // Cold blue
-    { t: 0.3, r: 0,   g: 220, b: 255 }, // Cyan
-    { t: 0.55,r: 255, g: 230, b: 0   }, // Yellow
-    { t: 0.8, r: 255, g: 140, b: 0   }, // Orange
-    { t: 1,   r: 255, g: 20,  b: 20  }, // Hot red
+    { t: 0,    r: 0,   g: 100, b: 255 },
+    { t: 0.25, r: 0,   g: 200, b: 255 },
+    { t: 0.5,  r: 255, g: 230, b: 0   },
+    { t: 0.75, r: 255, g: 140, b: 0   },
+    { t: 1,    r: 255, g: 20,  b: 20  },
   ],
   energy: [
-    { t: 0,   r: 255, g: 30,  b: 30  }, // Empty red
-    { t: 0.4, r: 255, g: 200, b: 0   }, // Yellow
-    { t: 1,   r: 30,  g: 255, b: 80   }, // Full green
+    { t: 0,    r: 255, g: 30,  b: 30  },
+    { t: 0.35, r: 255, g: 200, b: 0   },
+    { t: 1,    r: 30,  g: 255, b: 80   },
   ],
 };
 
-function lerp(a: number, b: number, t: number): number {
+function lerp(a: number, b: number, t: number) {
   return Math.round(a + (b - a) * t);
 }
 
@@ -50,16 +48,16 @@ function interpolateColor(stops: RGBStop[], pct01: number): [number, number, num
   return [128, 128, 128];
 }
 
-function rgbStr(rgb: [number, number, number]): string {
-  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-}
+function rgb(c: [number, number, number]) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function rgba(c: [number, number, number], a: number) { return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
 
-/** Build SVG gradient stops from a palette */
 function buildGradientStops(stops: RGBStop[], inverted: boolean) {
-  const s = inverted ? [...stops].reverse().map((st, i, arr) => ({ ...st, t: i / (arr.length - 1) })) : stops;
+  const s = inverted
+    ? [...stops].reverse().map((st, i, arr) => ({ ...st, t: i / (arr.length - 1) }))
+    : stops;
   return s.map((st) => ({
     offset: `${Math.round(st.t * 100)}%`,
-    color: `rgb(${st.r}, ${st.g}, ${st.b})`,
+    color: `rgb(${st.r},${st.g},${st.b})`,
   }));
 }
 
@@ -67,7 +65,6 @@ export default function GaugeWidget({ telemetryKey, title, cache, config, compac
   const { data, isInitial } = useWidgetData({ telemetryKey, cache });
   const gauge = data as TelemetryGaugeData | null;
 
-  // Read builder config
   const extra = (config?.extra as Record<string, unknown>) || config || {};
   const styleConfig = (config?.style as Record<string, unknown>) || {};
 
@@ -77,7 +74,6 @@ export default function GaugeWidget({ telemetryKey, title, cache, config, compac
   const paletteName = (extra.gaugePalette as string) || "thermal";
   const inverted = (extra.gaugeInvert as boolean) ?? false;
 
-  // Style from builder
   const valueFont = (styleConfig.valueFont as string) || "'JetBrains Mono', monospace";
   const titleFont = (styleConfig.titleFont as string) || "'Orbitron', sans-serif";
   const valueFontSize = (styleConfig.valueFontSize as number) || undefined;
@@ -89,13 +85,16 @@ export default function GaugeWidget({ telemetryKey, title, cache, config, compac
   const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
   const pct01 = pct / 100;
 
-  const radius = 40;
-  const circumference = Math.PI * radius;
+  // Arc geometry — 180° semicircle
+  const R = 42;
+  const STROKE = 7;
+  const CX = 50;
+  const CY = 56;
+  const circumference = Math.PI * R;
 
-  const springPct = useSpring(pct, { stiffness: 60, damping: 20 });
+  const springPct = useSpring(pct, { stiffness: 55, damping: 18 });
   const animatedOffset = useTransform(springPct, (v) => circumference - (v / 100) * circumference);
 
-  // Palette and interpolation
   const paletteStops = PALETTES[paletteName] || PALETTES.thermal;
   const effectiveStops = useMemo(() => {
     if (!inverted) return paletteStops;
@@ -103,106 +102,128 @@ export default function GaugeWidget({ telemetryKey, title, cache, config, compac
   }, [paletteStops, inverted]);
 
   const currentRGB = useMemo(() => interpolateColor(effectiveStops, pct01), [effectiveStops, pct01]);
-  const currentColor = rgbStr(currentRGB);
-
-  // The color to use for the value text: builder override > interpolated
+  const currentColor = rgb(currentRGB);
   const displayColor = valueColor || currentColor;
 
-  // Gradient stops for the SVG arc
   const gradStops = useMemo(() => buildGradientStops(paletteStops, inverted), [paletteStops, inverted]);
+  const gradId = `gg-${telemetryKey}`;
+  const glowId = `gg-glow-${telemetryKey}`;
 
-  const gradId = `gauge-grad-${telemetryKey}`;
+  // Needle position on the arc
+  const needleCx = useTransform(springPct, (v) => {
+    const angle = Math.PI - (v / 100) * Math.PI;
+    return CX + R * Math.cos(angle);
+  });
+  const needleCy = useTransform(springPct, (v) => {
+    const angle = Math.PI - (v / 100) * Math.PI;
+    return CY - R * Math.sin(angle);
+  });
 
-  // Neon glow styles
-  const glowFilter = `drop-shadow(0 0 10px ${currentColor}80)`;
-  const textGlow = `0 0 12px ${currentColor}80, 0 0 4px ${currentColor}`;
+  const arcPath = `M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`;
 
   return (
     <motion.div
-      initial={isInitial ? { opacity: 0, scale: 0.95 } : false}
+      initial={isInitial ? { opacity: 0, scale: 0.92 } : false}
       animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
       className={`glass-card rounded-lg ${compact ? "p-2 gap-0.5" : "p-4 gap-1"} h-full flex flex-col items-center justify-center border border-border/50`}
     >
+      {/* Title */}
       <span
-        className={`${compact ? "text-[8px]" : "text-[10px]"} uppercase tracking-wider text-muted-foreground truncate w-full text-center`}
-        style={{
-          fontFamily: titleFont,
-          color: labelColor || undefined,
-        }}
+        className={`${compact ? "text-[8px]" : "text-[10px]"} uppercase tracking-[0.18em] text-muted-foreground truncate w-full text-center`}
+        style={{ fontFamily: titleFont, color: labelColor || undefined }}
       >
         {title}
       </span>
 
-      <svg viewBox="0 0 100 60" className="w-full max-w-[120px]" style={{ filter: glowFilter, transition: "filter 0.8s ease" }}>
-        {/* Background arc */}
-        <path
-          d="M 10 55 A 40 40 0 0 1 90 55"
-          fill="none"
-          stroke="hsl(var(--muted))"
-          strokeWidth="6"
-          strokeLinecap="round"
-        />
-        {/* Gradient definition */}
+      {/* SVG Gauge */}
+      <svg viewBox="0 0 100 64" className="w-full max-w-[140px]">
         <defs>
+          {/* Gradient for the arc */}
           <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
             {gradStops.map((s, i) => (
               <stop key={i} offset={s.offset} stopColor={s.color} />
             ))}
           </linearGradient>
+          {/* Glow filter for the foreground arc */}
+          <filter id={glowId} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
-        {/* Animated foreground arc */}
+
+        {/* Background arc — dim track */}
+        <path
+          d={arcPath}
+          fill="none"
+          stroke="hsl(var(--muted) / 0.35)"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+        />
+
+        {/* Foreground arc — gradient + glow */}
         <motion.path
-          d="M 10 55 A 40 40 0 0 1 90 55"
+          d={arcPath}
           fill="none"
           stroke={`url(#${gradId})`}
-          strokeWidth="6"
+          strokeWidth={STROKE}
           strokeLinecap="round"
           strokeDasharray={circumference}
           style={{ strokeDashoffset: animatedOffset }}
+          filter={`url(#${glowId})`}
         />
-        {/* Needle indicator dot */}
+
+        {/* Needle dot */}
         <motion.circle
-          cx={useTransform(springPct, (v) => {
-            const angle = Math.PI - (v / 100) * Math.PI;
-            return 50 + 40 * Math.cos(angle);
-          })}
-          cy={useTransform(springPct, (v) => {
-            const angle = Math.PI - (v / 100) * Math.PI;
-            return 55 - 40 * Math.sin(angle);
-          })}
-          r="3"
+          cx={needleCx}
+          cy={needleCy}
+          r="4"
           fill={currentColor}
           style={{
-            filter: `drop-shadow(0 0 6px ${currentColor})`,
-            transition: "fill 0.8s ease",
+            filter: `drop-shadow(0 0 6px ${currentColor}) drop-shadow(0 0 12px ${rgba(currentRGB, 0.5)})`,
+            transition: "fill 0.6s ease",
           }}
         />
+        {/* Needle inner highlight */}
+        <motion.circle
+          cx={needleCx}
+          cy={needleCy}
+          r="1.8"
+          fill="white"
+          opacity={0.7}
+        />
+
         {/* Value text */}
         <text
-          x="50" y="52"
+          x={CX}
+          y={CY - 4}
           textAnchor="middle"
+          dominantBaseline="middle"
           fill={displayColor}
-          fontSize={valueFontSize ? Math.min(valueFontSize, 18) : 14}
+          fontSize={valueFontSize ? Math.min(valueFontSize, 16) : 13}
           fontFamily={valueFont}
           fontWeight="bold"
           style={{
-            transition: "fill 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
-            filter: `drop-shadow(0 0 8px ${displayColor}80)`,
+            transition: "fill 0.6s ease",
+            filter: `drop-shadow(0 0 10px ${rgba(currentRGB, 0.6)})`,
           }}
         >
           {data ? value.toFixed(decimals) : "—"}
         </text>
+
         {/* Min / Max labels */}
-        <text x="10" y="60" textAnchor="start" fill="hsl(var(--muted-foreground))" fontSize="5" fontFamily={valueFont}>
-          {min}
-        </text>
-        <text x="90" y="60" textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize="5" fontFamily={valueFont}>
-          {max}
-        </text>
+        <text x={CX - R} y={CY + 9} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize="4.5" fontFamily={valueFont}>{min}</text>
+        <text x={CX + R} y={CY + 9} textAnchor="middle" fill="hsl(var(--muted-foreground))" fontSize="4.5" fontFamily={valueFont}>{max}</text>
       </svg>
 
+      {/* Unit label */}
       {gauge?.unit && (
-        <span className="text-[10px] text-muted-foreground">{gauge.unit}</span>
+        <span className="text-[10px] text-muted-foreground -mt-1" style={{ fontFamily: valueFont }}>
+          {gauge.unit}
+        </span>
       )}
     </motion.div>
   );
