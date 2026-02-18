@@ -120,8 +120,9 @@ export default function DashboardView() {
       data-theme-category={themeCategory}
       style={{
         background: 'var(--category-bg, linear-gradient(180deg, hsl(228 30% 4%) 0%, hsl(230 35% 2%) 100%))',
-        width: '100%',
+        width: '100vw',
         maxWidth: '100vw',
+        margin: 0,
         boxSizing: 'border-box',
       }}
     >
@@ -145,7 +146,7 @@ export default function DashboardView() {
         </>
       )}
 
-      <div className="w-full relative z-10" style={{ maxWidth: '100%' }}>
+      <div className="w-full relative z-10" style={{ maxWidth: '100%', margin: 0 }}>
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: -10 }}

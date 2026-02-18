@@ -587,3 +587,12 @@
 [data-theme-category="cameras"] ::-webkit-scrollbar-thumb:hover {
   background: hsl(220 15% 55%);
 }
+
+/* ── react-grid-layout: force full-width and no slide animation ── */
+.react-grid-layout {
+  width: 100% !important;
+  display: block !important;
+}
+.react-grid-item {
+  transition: none !important;
+}
