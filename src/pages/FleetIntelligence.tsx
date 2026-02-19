@@ -271,7 +271,7 @@ export default function FleetIntelligence() {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               style={{ background: "hsl(43 100% 50% / 0.15)", color: "hsl(43 100% 50%)", border: "1px solid hsl(43 100% 50% / 0.3)" }}
             >
-              <Cable className="w-4 h-4" /> Abrir Admin Hub
+              <Cable className="w-4 h-4" /> Configurar API do RMS
             </button>
           </div>
         )}

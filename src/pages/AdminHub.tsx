@@ -88,6 +88,7 @@ export default function AdminHub() {
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
 
   // Team editing
   const [editingTeam, setEditingTeam] = useState(false);
@@ -268,8 +269,10 @@ export default function AdminHub() {
 
   const filteredProfiles = profiles.filter((p) => {
     const term = search.toLowerCase();
-    return (p.display_name?.toLowerCase().includes(term) ?? false) ||
+    const matchesSearch = (p.display_name?.toLowerCase().includes(term) ?? false) ||
       (p.email?.toLowerCase().includes(term) ?? false);
+    const matchesRole = roleFilter === "all" || getRoleForUser(p.id) === roleFilter;
+    return matchesSearch && matchesRole;
   });
 
   // Access denied
@@ -323,7 +326,7 @@ export default function AdminHub() {
                 <Building2 className="w-4 h-4 mr-2" /> Organização
               </TabsTrigger>
               <TabsTrigger value="connections" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-                <Cable className="w-4 h-4 mr-2" /> Conexões API
+                <Cable className="w-4 h-4 mr-2" /> Conexões de Dados
               </TabsTrigger>
             </TabsList>
 
@@ -337,10 +340,23 @@ export default function AdminHub() {
                       USUÁRIOS ({filteredProfiles.length})
                     </h2>
                   </div>
-                  <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input placeholder="Buscar por nome ou email..." value={search}
-                      onChange={(e) => setSearch(e.target.value)} className="pl-9 bg-muted/50 border-border text-sm" />
+                  <div className="flex items-center gap-2">
+                    <Select value={roleFilter} onValueChange={setRoleFilter}>
+                      <SelectTrigger className="w-32 h-9 bg-muted/50 border-border text-xs">
+                        <SelectValue placeholder="Filtrar role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas Roles</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="editor">Editor</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="relative w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input placeholder="Buscar por nome ou email..." value={search}
+                        onChange={(e) => setSearch(e.target.value)} className="pl-9 bg-muted/50 border-border text-sm" />
+                    </div>
                   </div>
                 </div>
                 <div className="overflow-x-auto">
