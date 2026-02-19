@@ -19,6 +19,8 @@ interface UseDashboardRealtimeOptions {
   flushIntervalMs?: number;
   /** Enable/disable the subscription */
   enabled?: boolean;
+  /** Keys that bypass the flush buffer and trigger immediate onUpdate */
+  priorityKeys?: string[];
 }
 
 /**
@@ -33,11 +35,14 @@ export function useDashboardRealtime({
   onUpdate,
   flushIntervalMs = 250,
   enabled = true,
+  priorityKeys = [],
 }: UseDashboardRealtimeOptions) {
   const cacheRef = useRef<Map<string, TelemetryCacheEntry>>(new Map());
   const dirtyRef = useRef(false);
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
+  const priorityKeysRef = useRef(priorityKeys);
+  priorityKeysRef.current = priorityKeys;
 
   // Handle incoming broadcast
   const handleBroadcast = useCallback((payload: TelemetryBroadcast) => {
@@ -56,7 +61,12 @@ export function useDashboardRealtime({
       receivedAt: Date.now(),
     });
 
-    dirtyRef.current = true;
+    // Instant flush for priority keys (bypass buffer)
+    if (priorityKeysRef.current.some((pk) => payload.key === pk || payload.key.includes(pk))) {
+      onUpdateRef.current(new Map(cache));
+    } else {
+      dirtyRef.current = true;
+    }
   }, []);
 
   // Throttled flush loop

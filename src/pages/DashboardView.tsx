@@ -82,6 +82,17 @@ export default function DashboardView() {
 
   const { dashboard, isLoading, error, telemetryCache, pollNow, isPollingActive } = useDashboardData(activeDashId, pollInterval);
 
+  // ── Window focus refetch: re-poll immediately when tab regains focus ──
+  useEffect(() => {
+    const handleFocus = () => {
+      if (dashboard?.zabbix_connection_id) {
+        pollNow();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [dashboard?.zabbix_connection_id, pollNow]);
+
   // ── Battery Crisis Monitor ──
   // Collect all battery-bar widget telemetry keys from the dashboard
   const batteryKeys = useMemo(() => {

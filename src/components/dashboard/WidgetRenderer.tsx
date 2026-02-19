@@ -4,6 +4,7 @@ import type { ImageHotspot } from "@/types/builder";
 import { extractRawValue, getMappedStatus } from "@/lib/telemetry-utils";
 import { useWidgetVisibility } from "@/hooks/useWidgetVisibility";
 import { buildWidgetCSS, getGlassClass } from "@/lib/widget-style-utils";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import WidgetSkeleton from "./widgets/WidgetSkeleton";
 import StatWidget from "./widgets/StatWidget";
 import GaugeWidget from "./widgets/GaugeWidget";
@@ -161,9 +162,18 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
 
   return (
     <div ref={containerRef} className={`${wrapperClass} relative`} style={containStyle}>
-      {/* Sync pulse dot */}
-      {showPulse && (
-        <span className="widget-sync-pulse" />
+      {/* Sync pulse dot with latency tooltip */}
+      {showPulse && entry && (
+        <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="widget-sync-pulse" />
+            </TooltipTrigger>
+            <TooltipContent side="left" className="text-[10px] font-mono px-2 py-1">
+              Updated {Math.max(0, Date.now() - entry.receivedAt)}ms ago
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
       {hasCustomStyle ? (
         <div
