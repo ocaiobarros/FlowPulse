@@ -290,7 +290,7 @@ export default function AdminHub() {
     }
   };
 
-
+  const handleSaveTeam = async () => {
     if (!tenant || !teamName.trim()) return;
     setSavingTeam(true);
     try {
@@ -1094,3 +1094,4 @@ export default function AdminHub() {
     </div>
   );
 }
+
