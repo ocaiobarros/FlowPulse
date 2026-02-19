@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef } from "react";
+import { memo, useMemo, useRef, useState, useEffect } from "react";
 import { motion, useSpring, useTransform, AnimatePresence } from "framer-motion";
 import { useWidgetData } from "@/hooks/useWidgetData";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
@@ -228,6 +228,40 @@ function BatteryBarWidgetInner({ telemetryKey, title, cache, config, compact }: 
     return matchesValue(statusRaw, runtimeDischargingValue);
   }, [runtimeEnabled, statusRaw, runtimeDischargingValue]);
 
+  // ── Elapsed timer since AC failure ──
+  const acFailureTsRef = useRef<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (isDischarging) {
+      // Record AC failure timestamp on transition
+      if (acFailureTsRef.current === null) {
+        acFailureTsRef.current = Date.now();
+      }
+      // Tick every second
+      const tick = setInterval(() => {
+        if (acFailureTsRef.current !== null) {
+          setElapsedSeconds(Math.floor((Date.now() - acFailureTsRef.current) / 1000));
+        }
+      }, 1000);
+      return () => clearInterval(tick);
+    } else {
+      // AC restored → reset
+      acFailureTsRef.current = null;
+      setElapsedSeconds(0);
+    }
+  }, [isDischarging]);
+
+  const elapsedDisplay = useMemo(() => {
+    if (elapsedSeconds < 60) return { value: `${elapsedSeconds}`, suffix: "s" };
+    const m = Math.floor(elapsedSeconds / 60);
+    const s = elapsedSeconds % 60;
+    if (m < 60) return { value: `${m}`, suffix: `m ${String(s).padStart(2, "0")}s` };
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return { value: `${h}`, suffix: `h ${String(rm).padStart(2, "0")}m` };
+  }, [elapsedSeconds]);
+
   // ── Status-gated voltage recording ──
   // Only record while discharging; clear history on AC restore
   if (!isDischarging) {
@@ -379,6 +413,10 @@ function BatteryBarWidgetInner({ telemetryKey, title, cache, config, compact }: 
   const emergencyStyle = (batteryState === "shutdown" || isPulsingRed) ? {
     borderColor: "hsl(0 100% 45%)",
     boxShadow: "0 0 15px hsla(0, 100%, 45%, 0.4), inset 0 0 15px hsla(0, 100%, 45%, 0.1)",
+  } : batteryState === "discharging" ? {
+    borderColor: "hsl(30 100% 50%)",
+    boxShadow: "0 0 12px hsla(30, 100%, 50%, 0.3), inset 0 0 10px hsla(30, 100%, 50%, 0.08)",
+    animation: "battery-discharge-border-pulse 2s ease-in-out infinite",
   } : undefined;
 
   // State icon
@@ -575,7 +613,7 @@ function BatteryBarWidgetInner({ telemetryKey, title, cache, config, compact }: 
               )}
             </div>
 
-            {/* Bottom Right: Amperage (if available) OR shutdown label */}
+            {/* Bottom Right: Elapsed timer (discharging) OR Amperage OR shutdown label */}
             {batteryState === "shutdown" ? (
               <span
                 className="font-bold uppercase tracking-wider"
@@ -589,6 +627,26 @@ function BatteryBarWidgetInner({ telemetryKey, title, cache, config, compact }: 
               >
                 SHUTDOWN
               </span>
+            ) : isDischarging && elapsedSeconds > 0 ? (
+              <div className="flex items-center gap-1">
+                <Timer
+                  className={`${compact ? "w-2.5 h-2.5" : "w-3 h-3"} shrink-0`}
+                  style={{ color: "rgb(255, 160, 0)", filter: "drop-shadow(0 0 4px rgb(255, 160, 0))", opacity: 0.9 }}
+                />
+                <span
+                  className="font-bold font-mono leading-none"
+                  style={{
+                    color: "rgb(255, 160, 0)",
+                    fontSize: valueFontSize ? `${valueFontSize * 0.55}px` : (compact ? "10px" : "12px"),
+                    fontFamily: valueFont || "'JetBrains Mono', monospace",
+                    textShadow: "0 0 8px rgba(255, 160, 0, 0.6)",
+                    transition: "color 0.8s",
+                  }}
+                >
+                  {elapsedDisplay.value}
+                  <span style={{ fontSize: "0.7em", opacity: 0.85 }}>{elapsedDisplay.suffix}</span>
+                </span>
+              </div>
             ) : amperageFormatted ? (
               <div className="flex items-center gap-1">
                 <Activity
