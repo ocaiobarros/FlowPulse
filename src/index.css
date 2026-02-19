@@ -729,3 +729,34 @@
 .neon-critical-flash {
   animation: neon-critical-flash 0.8s ease-in-out infinite;
 }
+
+/* ── Battery Crisis: Full Dashboard Emergency Pulse ── */
+@keyframes emergency-bg-pulse {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: hsla(0, 100%, 50%, 0.12);
+  }
+}
+
+.emergency-pulse-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  animation: emergency-bg-pulse 1.2s ease-in-out infinite;
+}
+
+/* Vignette red glow at edges during crisis */
+.emergency-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 39;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    hsla(0, 100%, 30%, 0.25) 100%
+  );
+}

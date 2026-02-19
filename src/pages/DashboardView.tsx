@@ -4,11 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import WidgetRenderer from "@/components/dashboard/WidgetRenderer";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, ArrowLeft, Settings, Wifi, WifiOff, Volume2, VolumeOff, Timer } from "lucide-react";
-import { motion } from "framer-motion";
+import { RefreshCw, ArrowLeft, Settings, Wifi, WifiOff, Volume2, VolumeOff, Timer, BellOff } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
+import { useBatteryCrisis } from "@/hooks/useBatteryCrisis";
 import ReactGridLayout, { type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -81,6 +82,23 @@ export default function DashboardView() {
 
   const { dashboard, isLoading, error, telemetryCache, pollNow, isPollingActive } = useDashboardData(activeDashId, pollInterval);
 
+  // ── Battery Crisis Monitor ──
+  // Collect all battery-bar widget telemetry keys from the dashboard
+  const batteryKeys = useMemo(() => {
+    if (!dashboard?.widgets) return [];
+    return (dashboard.widgets as any[])
+      .filter((w: any) => w.widget_type === "battery-bar")
+      .map((w: any) => w.adapter?.telemetry_key || `zbx:widget:${w.id}`);
+  }, [dashboard?.widgets]);
+
+  const { isCrisis, crisisVoltage, isSilenced, silenceAlarm } = useBatteryCrisis({
+    cache: telemetryCache,
+    batteryKeys,
+    crisisThreshold: 44.0,
+    recoveryThreshold: 44.5,
+    globalMuted: muted,
+  });
+
   const handlePoll = async () => {
     await pollNow();
   };
@@ -126,6 +144,14 @@ export default function DashboardView() {
         boxSizing: 'border-box',
       }}
     >
+      {/* ── Battery Crisis Overlays ── */}
+      {isCrisis && (
+        <>
+          <div className="emergency-pulse-overlay" />
+          <div className="emergency-vignette" />
+        </>
+      )}
+
       {/* Sync progress bar */}
       {isPollingActive && (
         <div className="fixed top-0 left-0 right-0 h-[2px] z-50">
@@ -263,6 +289,33 @@ export default function DashboardView() {
             )}
           </>
         )}
+
+        {/* Floating Silence Alarm Button */}
+        <AnimatePresence>
+          {isCrisis && !isSilenced && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 20 }}
+              className="fixed bottom-6 right-6 z-50"
+            >
+              <Button
+                onClick={silenceAlarm}
+                variant="destructive"
+                size="icon"
+                className="h-12 w-12 rounded-full shadow-lg glow-red"
+                title="Silenciar alarme"
+              >
+                <BellOff className="w-5 h-5" />
+              </Button>
+              {crisisVoltage !== null && (
+                <span className="absolute -top-2 -left-2 text-[9px] font-mono bg-destructive text-destructive-foreground px-1.5 py-0.5 rounded-full">
+                  {crisisVoltage.toFixed(1)}V
+                </span>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Footer */}
         <div className="text-center py-4 mt-8">
