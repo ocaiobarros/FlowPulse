@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useMemo } from "react";
+import { memo, useEffect, useRef, useMemo, useState } from "react";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
 import type { ImageHotspot } from "@/types/builder";
 import { extractRawValue, getMappedStatus } from "@/lib/telemetry-utils";
@@ -33,6 +33,8 @@ interface Props {
 function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache, config, onCritical, compact }: Props) {
   const prevCriticalRef = useRef(false);
   const { containerRef, isVisible } = useWidgetVisibility();
+  const [showPulse, setShowPulse] = useState(false);
+  const prevTsRef = useRef<number | null>(null);
 
   const entry = cache.get(telemetryKey);
   const colorMap = config?.color_map as Record<string, unknown> | undefined;
@@ -41,6 +43,17 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
   const styleConfig = (config?.style as Record<string, unknown>) || {};
   const customCSS = useMemo(() => buildWidgetCSS(styleConfig as any), [styleConfig]);
   const glassClass = getGlassClass(styleConfig as any);
+
+  // Sync pulse: flash green dot when new data arrives
+  useEffect(() => {
+    if (!entry) return;
+    if (prevTsRef.current !== null && entry.ts !== prevTsRef.current) {
+      setShowPulse(true);
+      const timer = setTimeout(() => setShowPulse(false), 1200);
+      return () => clearTimeout(timer);
+    }
+    prevTsRef.current = entry.ts;
+  }, [entry?.ts]);
 
   useEffect(() => {
     if (!entry || !colorMap || !widgetId || !onCritical) return;
@@ -147,7 +160,11 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
   const hasCustomStyle = Object.keys(styleConfig).length > 0;
 
   return (
-    <div ref={containerRef} className={wrapperClass} style={containStyle}>
+    <div ref={containerRef} className={`${wrapperClass} relative`} style={containStyle}>
+      {/* Sync pulse dot */}
+      {showPulse && (
+        <span className="widget-sync-pulse" />
+      )}
       {hasCustomStyle ? (
         <div
           className={`h-full w-full rounded-lg border border-border/50 overflow-hidden ${glassClass}`}
