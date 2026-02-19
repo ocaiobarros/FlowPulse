@@ -781,3 +781,15 @@
   40% { opacity: 1; transform: scale(1.8); }
   100% { opacity: 0; transform: scale(1); }
 }
+
+/* ── Battery discharge border pulse (orange) ── */
+@keyframes battery-discharge-border-pulse {
+  0%, 100% {
+    border-color: hsla(30, 100%, 50%, 0.6);
+    box-shadow: 0 0 8px hsla(30, 100%, 50%, 0.2), inset 0 0 6px hsla(30, 100%, 50%, 0.05);
+  }
+  50% {
+    border-color: hsla(30, 100%, 50%, 1);
+    box-shadow: 0 0 16px hsla(30, 100%, 50%, 0.4), inset 0 0 12px hsla(30, 100%, 50%, 0.1);
+  }
+}
