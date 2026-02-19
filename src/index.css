@@ -760,3 +760,24 @@
     hsla(0, 100%, 30%, 0.25) 100%
   );
 }
+
+/* ── Widget sync pulse dot ── */
+.widget-sync-pulse {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background-color: #39FF14;
+  border-radius: 50%;
+  z-index: 10;
+  pointer-events: none;
+  animation: sync-pulse-fade 1.2s ease-out forwards;
+  box-shadow: 0 0 6px #39FF14, 0 0 12px #39FF1480;
+}
+
+@keyframes sync-pulse-fade {
+  0% { opacity: 1; transform: scale(1); }
+  40% { opacity: 1; transform: scale(1.8); }
+  100% { opacity: 0; transform: scale(1); }
+}
