@@ -153,9 +153,10 @@ Deno.serve(async (req) => {
           created_by: userId,
         })
         .select("id, name, url, is_active, created_at")
-        .single();
+        .maybeSingle();
 
       if (insertErr) throw new Error(insertErr.message);
+      if (!conn) return json({ error: "Failed to create connection (RLS)" }, 403);
       return json({ connection: conn }, 201);
     }
 
@@ -180,9 +181,10 @@ Deno.serve(async (req) => {
         .update(updates)
         .eq("id", id)
         .select("id, name, url, is_active, updated_at")
-        .single();
+        .maybeSingle();
 
       if (updateErr) throw new Error(updateErr.message);
+      if (!conn) return json({ error: "Connection not found or access denied" }, 404);
       return json({ connection: conn });
     }
 
