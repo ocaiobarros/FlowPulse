@@ -16,6 +16,7 @@ import DashboardView from "./pages/DashboardView";
 import DashboardBuilder from "./pages/DashboardBuilder";
 import DashboardList from "./pages/DashboardList";
 import NotFound from "./pages/NotFound";
+import FleetIntelligence from "./pages/FleetIntelligence";
 
 const queryClient = new QueryClient();
 
@@ -84,6 +85,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/templates/fleet-intelligence"
+              element={
+                <ProtectedRoute>
+                  <FleetIntelligence />
                 </ProtectedRoute>
               }
             />
