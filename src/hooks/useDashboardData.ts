@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useDashboardRealtime, type TelemetryCacheEntry } from "./useDashboardRealtime";
@@ -70,11 +70,25 @@ export function useDashboardData(dashboardId: string | null, pollIntervalOverrid
     enabled: !!dashboardId,
   });
 
+  // Collect priority keys for instant flush (ac_status, battery voltage keys)
+  const priorityKeys = useMemo(() => {
+    if (!dashboard?.widgets) return [];
+    const keys: string[] = [];
+    for (const w of (dashboard.widgets as any[])) {
+      const tk = w.adapter?.telemetry_key || "";
+      if (tk && (tk.includes("ac_status") || tk.includes("battery") || tk.includes("voltage") || tk.includes("ups"))) {
+        keys.push(tk);
+      }
+    }
+    return keys;
+  }, [dashboard?.widgets]);
+
   // Realtime subscription
   const { seedCache, clearCache } = useDashboardRealtime({
     dashboardId,
     onUpdate: setTelemetryCache,
     enabled: !!dashboardId,
+    priorityKeys,
   });
 
   // Replay warm start
