@@ -216,6 +216,17 @@ Deno.serve(async (req) => {
         updates.password_tag = encrypted.tag;
       }
 
+      // If nothing to update, just return current data
+      if (Object.keys(updates).length === 0) {
+        const { data: current } = await supabase
+          .from("zabbix_connections")
+          .select("id, name, url, username, is_active, updated_at")
+          .eq("id", id)
+          .maybeSingle();
+        if (!current) return json({ error: "Connection not found or access denied" }, 404);
+        return json({ connection: current });
+      }
+
       const { data: conn, error: updateErr } = await supabase
         .from("zabbix_connections")
         .update(updates)
