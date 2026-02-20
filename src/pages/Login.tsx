@@ -9,16 +9,24 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, LogIn } from "lucide-react";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const resolveEmail = (input: string): string => {
+    const trimmed = input.trim();
+    // If it looks like an email, use as-is; otherwise append @flowpulse.local
+    if (trimmed.includes("@")) return trimmed;
+    return `${trimmed}@flowpulse.local`;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
+    const email = resolveEmail(identifier);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
@@ -37,13 +45,13 @@ export default function Login() {
     <AuthLayout title="Bem-vindo de volta" subtitle="Entre com suas credenciais">
       <form onSubmit={handleLogin} className="space-y-5">
         <div className="space-y-2">
-          <Label htmlFor="email" className="text-sm text-muted-foreground">E-mail</Label>
+          <Label htmlFor="identifier" className="text-sm text-muted-foreground">Usuário ou E-mail</Label>
           <Input
-            id="email"
-            type="email"
-            placeholder="seu@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            id="identifier"
+            type="text"
+            placeholder="admin ou seu@email.com"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
             required
             className="bg-muted/50 border-border focus:border-primary"
           />

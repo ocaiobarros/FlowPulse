@@ -105,7 +105,7 @@ export default function AdminHub() {
 
   // Invite user
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: "", display_name: "", role: "viewer" });
+  const [inviteForm, setInviteForm] = useState({ email: "", display_name: "", role: "viewer", password: "" });
   const [inviting, setInviting] = useState(false);
 
   // Role change
@@ -317,13 +317,21 @@ export default function AdminHub() {
     setInviting(true);
     try {
       const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: { email: inviteForm.email.trim(), display_name: inviteForm.display_name.trim(), role: inviteForm.role },
+        body: {
+          email: inviteForm.email.trim(),
+          display_name: inviteForm.display_name.trim(),
+          role: inviteForm.role,
+          password: inviteForm.password.trim() || undefined,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      toast({ title: "Usuário adicionado", description: `${inviteForm.email} foi adicionado ao time.` });
+      const msg = inviteForm.password.trim()
+        ? `${inviteForm.email} criado com a senha definida.`
+        : `${inviteForm.email} foi adicionado ao time.`;
+      toast({ title: "Usuário adicionado", description: msg });
       setInviteOpen(false);
-      setInviteForm({ email: "", display_name: "", role: "viewer" });
+      setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
       await fetchData();
     } catch (err: any) {
       toast({ variant: "destructive", title: "Erro", description: err.message || "Falha ao convidar." });
@@ -1032,6 +1040,14 @@ export default function AdminHub() {
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Senha provisória</Label>
+              <Input type="password" value={inviteForm.password}
+                onChange={(e) => setInviteForm((f) => ({ ...f, password: e.target.value }))}
+                placeholder="Mín. 6 caracteres (opcional)" className="bg-muted/50 border-border"
+                minLength={6} />
+              <p className="text-[10px] text-muted-foreground">Se vazio, uma senha aleatória será gerada.</p>
             </div>
           </div>
           <DialogFooter>
