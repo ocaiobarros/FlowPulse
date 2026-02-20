@@ -120,16 +120,16 @@ function StorageBar({ ds, index }: { ds: VirtDatastore; index: number }) {
   const totalHuman = formatBytesHuman(ds.totalSize || "");
 
   const barColor = usedPct > 85
-    ? "hsl(0, 90%, 50%)"
+    ? "#e02020"
     : usedPct > 65
-      ? "hsl(43, 100%, 50%)"
-      : "hsl(186, 100%, 50%)";
+      ? "#f5a623"
+      : "#00e5ff";
 
   const glowColor = usedPct > 85
-    ? "hsl(0 90% 50% / 0.25)"
+    ? "rgba(224,32,32,0.25)"
     : usedPct > 65
-      ? "hsl(43 100% 50% / 0.2)"
-      : "hsl(186 100% 50% / 0.15)";
+      ? "rgba(245,166,35,0.2)"
+      : "rgba(0,229,255,0.15)";
 
   return (
     <motion.div
@@ -181,8 +181,8 @@ function StorageBar({ ds, index }: { ds: VirtDatastore; index: number }) {
           className="h-full rounded-full absolute top-0 left-0 transition-all duration-1000 ease-out"
           style={{
             width: `${Math.max(usedPct, 1)}%`,
-            background: `linear-gradient(90deg, ${barColor}90, ${barColor})`,
-            boxShadow: `0 0 12px ${barColor}60, inset 0 1px 0 hsl(0 0% 100% / 0.2)`,
+            background: `linear-gradient(90deg, ${barColor}dd, ${barColor})`,
+            boxShadow: `0 0 12px ${barColor}99`,
           }}
         />
         <div className="absolute inset-0 rounded-full pointer-events-none" style={{ background: `linear-gradient(180deg, hsl(0 0% 100% / 0.08), transparent)` }} />
