@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Activity, Server, Database, Power, Loader2, RefreshCw, Wifi } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Activity, Server, Database, Power, Loader2, Settings2 } from 'lucide-react';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import StatusCard from '@/components/dashboard/StatusCard';
 import TemperatureSection from '@/components/dashboard/TemperatureSection';
@@ -8,7 +8,7 @@ import PowerSection from '@/components/dashboard/PowerSection';
 import StorageSection from '@/components/dashboard/StorageSection';
 import NetworkSection from '@/components/dashboard/NetworkSection';
 import InventorySection from '@/components/dashboard/InventorySection';
-import { useZabbixConnections } from '@/hooks/useZabbixConnections';
+import IdracSetupWizard, { loadIdracConfig, clearIdracConfig, type IdracConfig } from '@/components/dashboard/IdracSetupWizard';
 import {
   useIdracLive,
   extractStatus,
@@ -22,35 +22,26 @@ import {
 } from '@/hooks/useIdracLive';
 
 const Index = () => {
-  const { connections, isLoading: connectionsLoading } = useZabbixConnections();
-  const { hosts, hostsLoading, data, dataLoading, lastRefresh, refresh, error, fetchHosts, fetchItems } = useIdracLive();
+  const [config, setConfig] = useState<IdracConfig | null>(loadIdracConfig);
+  const [showSetup, setShowSetup] = useState(!config);
+  const { data, dataLoading, lastRefresh, refresh, error, fetchItems } = useIdracLive();
 
-  const [selectedConnection, setSelectedConnection] = useState<string>("");
-  const [selectedHost, setSelectedHost] = useState<string>("");
+  const handleConfigComplete = useCallback((cfg: IdracConfig) => {
+    setConfig(cfg);
+    setShowSetup(false);
+    fetchItems(cfg.connectionId, cfg.hostId);
+  }, [fetchItems]);
 
-  // Auto-select first connection
-  useEffect(() => {
-    if (connections.length > 0 && !selectedConnection) {
-      const active = connections.find(c => c.is_active);
-      if (active) {
-        setSelectedConnection(active.id);
-        fetchHosts(active.id);
-      }
-    }
-  }, [connections, selectedConnection, fetchHosts]);
-
-  const handleConnectionChange = (connId: string) => {
-    setSelectedConnection(connId);
-    setSelectedHost("");
-    if (connId) fetchHosts(connId);
+  const handleReconfigure = () => {
+    clearIdracConfig();
+    setConfig(null);
+    setShowSetup(true);
   };
 
-  const handleHostChange = (hostId: string) => {
-    setSelectedHost(hostId);
-    if (hostId && selectedConnection) {
-      fetchItems(selectedConnection, hostId);
-    }
-  };
+  // Show wizard if not configured
+  if (showSetup) {
+    return <IdracSetupWizard onComplete={handleConfigComplete} existingConfig={config} />;
+  }
 
   // Extracted data
   const status = data ? extractStatus(data) : null;
@@ -62,8 +53,6 @@ const Index = () => {
   const nics = data ? extractNics(data) : null;
   const inventory = data ? extractInventory(data) : null;
 
-  const selectedHostName = hosts.find(h => h.hostid === selectedHost)?.name ?? "";
-
   return (
     <div className="min-h-screen bg-background grid-pattern scanlines relative p-4 md:p-6 lg:p-8">
       {/* Ambient glow effect */}
@@ -73,77 +62,39 @@ const Index = () => {
       <div className="max-w-[1600px] mx-auto relative z-10">
         {/* Header */}
         <DashboardHeader
-          hostName={selectedHostName || "T440-MDP"}
+          hostName={config?.hostName ?? "T440-MDP"}
           lastRefresh={lastRefresh}
           onRefresh={data ? refresh : undefined}
           isLoading={dataLoading}
         />
 
-        {/* Connection / Host Selector */}
-        <div className="glass-card rounded-xl p-4 mb-6 border border-border/30">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Wifi className="w-4 h-4 text-neon-cyan" />
-              <span className="text-[10px] font-display uppercase tracking-widest text-muted-foreground">Conexão Zabbix</span>
-            </div>
-            <select
-              value={selectedConnection}
-              onChange={(e) => handleConnectionChange(e.target.value)}
-              className="bg-secondary/50 border border-border/50 rounded-md px-3 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:border-neon-green/50 min-w-[200px]"
-            >
-              <option value="">Selecione...</option>
-              {connections.filter(c => c.is_active).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-
-            {selectedConnection && (
-              <>
-                <div className="flex items-center gap-2">
-                  <Server className="w-4 h-4 text-neon-green" />
-                  <span className="text-[10px] font-display uppercase tracking-widest text-muted-foreground">Host</span>
-                </div>
-                <select
-                  value={selectedHost}
-                  onChange={(e) => handleHostChange(e.target.value)}
-                  disabled={hostsLoading}
-                  className="bg-secondary/50 border border-border/50 rounded-md px-3 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:border-neon-green/50 min-w-[250px] disabled:opacity-50"
-                >
-                  <option value="">{hostsLoading ? "Carregando hosts..." : "Selecione o host..."}</option>
-                  {hosts.map((h) => (
-                    <option key={h.hostid} value={h.hostid}>{h.name || h.host}</option>
-                  ))}
-                </select>
-              </>
-            )}
-
-            {dataLoading && <Loader2 className="w-4 h-4 text-neon-green animate-spin" />}
-            {data && !dataLoading && (
-              <button onClick={refresh} className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-neon-green transition-colors">
-                <RefreshCw className="w-3 h-3" />
-                Atualizar
-              </button>
-            )}
-          </div>
-          {error && (
-            <p className="text-xs text-neon-red mt-2 font-mono">{error}</p>
-          )}
+        {/* Reconfigure button - subtle top-right */}
+        <div className="flex justify-end mb-2 -mt-4">
+          <button
+            onClick={handleReconfigure}
+            className="flex items-center gap-1 text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          >
+            <Settings2 className="w-3 h-3" />
+            Reconfigurar
+          </button>
         </div>
 
-        {/* No data state */}
-        {!data && !dataLoading && (
-          <div className="glass-card rounded-xl p-16 text-center">
-            <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground font-mono">
-              Selecione uma conexão Zabbix e um host para carregar o dashboard
-            </p>
-          </div>
-        )}
-
+        {/* Loading state */}
         {dataLoading && !data && (
           <div className="glass-card rounded-xl p-16 text-center">
             <Loader2 className="w-8 h-8 text-neon-green animate-spin mx-auto mb-4" />
             <p className="text-sm text-muted-foreground font-mono">Carregando dados do Zabbix...</p>
+            <p className="text-[10px] text-muted-foreground/50 font-mono mt-1">Host: {config?.hostName}</p>
+          </div>
+        )}
+
+        {error && !data && (
+          <div className="glass-card rounded-xl p-8 text-center">
+            <p className="text-sm text-neon-red font-mono mb-2">Erro ao carregar dados</p>
+            <p className="text-[10px] text-muted-foreground font-mono">{error}</p>
+            <button onClick={() => config && fetchItems(config.connectionId, config.hostId)} className="mt-3 text-[10px] text-neon-cyan hover:underline font-mono">
+              Tentar novamente
+            </button>
           </div>
         )}
 
@@ -197,7 +148,7 @@ const Index = () => {
         {/* Footer */}
         <div className="text-center py-4">
           <p className="text-[10px] font-mono text-muted-foreground/50">
-            FLOWPULSE | iDRAC — {selectedHostName || "T440-MDP"} • Datasource: Zabbix • Refresh: 2min
+            FLOWPULSE | iDRAC — {config?.hostName ?? "T440-MDP"} • Datasource: Zabbix • Refresh: 2min
           </p>
         </div>
       </div>
