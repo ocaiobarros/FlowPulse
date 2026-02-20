@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { HardDrive, Database, Shield } from 'lucide-react';
+import { HardDrive, Database, Shield, Battery } from 'lucide-react';
 import { parseStatus } from '@/data/serverData';
 import { StatusIndicator } from './StatusCard';
 
@@ -12,6 +12,8 @@ interface DiskData {
   model: string;
   name: string;
   serial: string;
+  mediaType?: string;
+  smartStatus?: string;
 }
 
 interface VolumeData {
@@ -21,12 +23,16 @@ interface VolumeData {
   state: string;
   status: string;
   vdState: string;
+  layoutType?: string;
+  readPolicy?: string;
+  writePolicy?: string;
 }
 
 interface RaidData {
   name: string;
   status: string;
   firmware: string;
+  batteryStatus?: string;
 }
 
 interface Props {
@@ -60,12 +66,17 @@ const StorageSection = ({ disks, raidController, volumes }: Props) => {
             <Database className="w-3.5 h-3.5" /> Tipo de Mídia
           </h3>
           <div className="space-y-1.5">
-            {disks.map((d) => (
-              <div key={d.id} className="flex items-center justify-between text-xs font-mono py-1 border-b border-border/30 last:border-0">
-                <span className="text-muted-foreground">Disco {d.id}</span>
-                <span className="text-neon-cyan font-bold">SSD</span>
-              </div>
-            ))}
+            {disks.map((d) => {
+              const mediaLabel = d.mediaType
+                ? (d.mediaType.toLowerCase().includes("ssd") || d.mediaType.includes("3") ? "SSD" : "HDD")
+                : (d.name?.toLowerCase().includes("solid state") ? "SSD" : "SSD");
+              return (
+                <div key={d.id} className="flex items-center justify-between text-xs font-mono py-1 border-b border-border/30 last:border-0">
+                  <span className="text-muted-foreground truncate max-w-[120px]" title={d.name}>{d.name || `Disco ${d.id}`}</span>
+                  <span className={`font-bold ${mediaLabel === 'SSD' ? 'text-neon-cyan' : 'text-neon-amber'}`}>{mediaLabel}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -73,17 +84,21 @@ const StorageSection = ({ disks, raidController, volumes }: Props) => {
         <div className="glass-card rounded-xl p-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neon-green/20 to-transparent" />
           <h3 className="font-display text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-            <Shield className="w-3.5 h-3.5" /> Integridade do Disco
+            <Shield className="w-3.5 h-3.5" /> Integridade
           </h3>
           <div className="space-y-1.5">
             {disks.map((d) => {
-              const { level } = parseStatus(d.status || "OK (3)");
+              const statusText = d.status || d.smartStatus || "OK (3)";
+              const { level } = parseStatus(statusText);
               return (
                 <div key={d.id} className="flex items-center justify-between text-xs font-mono py-1 border-b border-border/30 last:border-0">
-                  <span className="text-muted-foreground">Disco {d.id}</span>
+                  <span className="text-muted-foreground truncate max-w-[80px]">{d.name || `Disco ${d.id}`}</span>
                   <div className="flex items-center gap-1.5">
                     <StatusIndicator status={level} size="sm" />
-                    <span className={level === 'ok' ? 'text-neon-green' : 'text-neon-red'}>{parseStatus(d.status || "OK").text}</span>
+                    <span className={level === 'ok' ? 'text-neon-green' : 'text-neon-red'}>{parseStatus(statusText).text}</span>
+                    {d.smartStatus && (
+                      <span className="text-[9px] text-muted-foreground ml-1">SMART: {parseStatus(d.smartStatus).text}</span>
+                    )}
                   </div>
                 </div>
               );
@@ -95,12 +110,12 @@ const StorageSection = ({ disks, raidController, volumes }: Props) => {
         <div className="glass-card rounded-xl p-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neon-amber/20 to-transparent" />
           <h3 className="font-display text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-            <HardDrive className="w-3.5 h-3.5" /> Tamanho do Disco
+            <HardDrive className="w-3.5 h-3.5" /> Tamanho
           </h3>
           <div className="space-y-1.5">
             {disks.map((d) => (
               <div key={d.id} className="flex items-center justify-between text-xs font-mono py-1 border-b border-border/30 last:border-0">
-                <span className="text-muted-foreground">Disco {d.id}</span>
+                <span className="text-muted-foreground truncate max-w-[100px]">{d.model || d.name || `Disco ${d.id}`}</span>
                 <span className="text-foreground font-bold">{d.size || "—"}</span>
               </div>
             ))}
@@ -118,32 +133,39 @@ const StorageSection = ({ disks, raidController, volumes }: Props) => {
           {raidController.name && (
             <div className="glass-card rounded-lg p-2.5 mb-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-mono text-muted-foreground">RAID Controller</span>
+                <span className="font-mono text-muted-foreground truncate max-w-[140px]" title={raidController.name}>{raidController.name}</span>
                 <div className="flex items-center gap-1">
                   <StatusIndicator status={parseStatus(raidController.status || "OK (3)").level} size="sm" />
                   <span className="text-neon-green font-bold font-display">{parseStatus(raidController.status || "OK").text}</span>
                 </div>
               </div>
-              <div className="text-[10px] font-mono text-muted-foreground mt-1">FW: {raidController.firmware}</div>
+              {raidController.firmware && (
+                <div className="text-[10px] font-mono text-muted-foreground mt-1">FW: {raidController.firmware}</div>
+              )}
+              {raidController.batteryStatus && (
+                <div className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground mt-1">
+                  <Battery className="w-3 h-3" />
+                  Bateria: <span className="text-neon-green">{parseStatus(raidController.batteryStatus).text}</span>
+                </div>
+              )}
             </div>
           )}
 
           {/* Volumes */}
           <div className="space-y-2">
             {volumes.map((v) => {
-              const stateClean = parseStatus(v.state || "").text;
               const { level } = parseStatus(v.status || "OK (3)");
               return (
                 <div key={v.id} className="glass-card rounded-lg p-2.5 space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-foreground font-bold">Volume {v.id}</span>
+                    <span className="font-mono text-foreground font-bold truncate max-w-[100px]" title={v.name}>{v.name}</span>
                     <div className="flex items-center gap-1">
                       <StatusIndicator status={level} size="sm" />
-                      <span className="text-neon-green font-display text-[10px]">{parseStatus(v.vdState || "Online").text}</span>
+                      <span className="text-neon-green font-display text-[10px]">{parseStatus(v.vdState || v.status || "Online").text}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-                    <span>{stateClean}</span>
+                    <span>{v.layoutType ? parseStatus(v.layoutType).text : (v.state ? parseStatus(v.state).text : "")}</span>
                     <span className="text-foreground">{v.size}</span>
                   </div>
                 </div>
