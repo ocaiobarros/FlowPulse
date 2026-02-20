@@ -3,15 +3,31 @@ export type StatusLevel = 'ok' | 'warning' | 'critical' | 'info';
 export function parseStatus(raw: string): { text: string; level: StatusLevel } {
   const cleaned = raw.replace(/\s*\(\d+\)\s*$/, '').trim();
   const lower = cleaned.toLowerCase();
-  if (lower.includes('ok') || lower.includes('online') || lower.includes('up') || lower.includes('presence detected') || lower.includes('online and ok')) {
+
+  // Match known OK keywords
+  if (lower.includes('ok') || lower.includes('online') || lower.includes('up') || lower.includes('presence detected') || lower.includes('online and ok') || lower === 'on') {
     return { text: cleaned, level: 'ok' };
   }
   if (lower.includes('warning') || lower.includes('attention')) {
     return { text: cleaned, level: 'warning' };
   }
-  if (lower.includes('critical') || lower.includes('fail') || lower.includes('down') || lower.includes('error')) {
+  if (lower.includes('critical') || lower.includes('fail') || lower.includes('down') || lower.includes('error') || lower === 'off') {
     return { text: cleaned, level: 'critical' };
   }
+
+  // Zabbix numeric codes: 3 = OK, 4 = On/Present, 1 = Up/Present, 2 = Warning-ish
+  const num = parseInt(cleaned, 10);
+  if (!isNaN(num)) {
+    if (num === 3 || num === 4 || num === 1) return { text: cleaned, level: 'ok' };
+    if (num === 2) return { text: cleaned, level: 'warning' };
+    if (num === 0 || num === 5) return { text: cleaned, level: 'critical' };
+  }
+
+  // Dash/empty = info
+  if (cleaned === '—' || cleaned === '' || cleaned === '-') {
+    return { text: cleaned, level: 'info' };
+  }
+
   return { text: cleaned, level: 'info' };
 }
 
