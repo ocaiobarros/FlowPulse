@@ -215,12 +215,10 @@ function VMDetailCard({ vm, index }: { vm: VirtVM; index: number }) {
               </span>
             </div>
             <MiniBar value={vm.memPercent} color={memColor} />
+            <div className="text-[10px] font-mono text-muted-foreground/60 text-center">
+              {formatBytes(vm.memUsed)} / {formatBytes(vm.memTotal)}
+            </div>
           </div>
-        </div>
-
-        {/* Memory detail */}
-        <div className="text-[10px] font-mono text-muted-foreground/60 text-center">
-          {formatBytes(vm.memUsed)} / {formatBytes(vm.memTotal)}
         </div>
 
         {/* Bottom row: Network + Disk + Uptime */}
