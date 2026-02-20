@@ -108,12 +108,12 @@ function parseSizeToBytes(s: string): number {
 
 function StorageBar({ ds, index }: { ds: VirtDatastore; index: number }) {
   let usedPct = 0;
-  if (ds.freePercent !== undefined && ds.freePercent > 0) {
-    usedPct = 100 - ds.freePercent;
-  } else if (ds.usedSize && ds.totalSize) {
+  if (ds.usedSize && ds.totalSize) {
     const used = parseSizeToBytes(ds.usedSize);
     const total = parseSizeToBytes(ds.totalSize);
-    usedPct = total > 0 ? (used / total) * 100 : 0;
+    usedPct = total > 0 ? Math.max(0, Math.min(100, (used / total) * 100)) : 0;
+  } else if (ds.freePercent !== undefined && ds.freePercent >= 0) {
+    usedPct = Math.max(0, Math.min(100, 100 - ds.freePercent));
   }
 
   const usedHuman = formatBytesHuman(ds.usedSize || "");
@@ -176,13 +176,11 @@ function StorageBar({ ds, index }: { ds: VirtDatastore; index: number }) {
       </div>
 
       {/* Thick progress bar */}
-      <div className="h-4 rounded-full overflow-hidden relative" style={{ background: "hsl(220 30% 12% / 0.9)", minHeight: "16px" }}>
-        <motion.div
-          className="h-full rounded-full absolute top-0 left-0"
-          initial={false}
-          animate={{ width: `${Math.max(usedPct, 0.5)}%` }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
+      <div className="w-full h-4 rounded-full overflow-hidden relative" style={{ background: "hsl(220 30% 12% / 0.9)" }}>
+        <div
+          className="h-full rounded-full absolute top-0 left-0 transition-all duration-1000 ease-out"
           style={{
+            width: `${Math.max(usedPct, 1)}%`,
             background: `linear-gradient(90deg, ${barColor}90, ${barColor})`,
             boxShadow: `0 0 12px ${barColor}60, inset 0 1px 0 hsl(0 0% 100% / 0.2)`,
           }}
