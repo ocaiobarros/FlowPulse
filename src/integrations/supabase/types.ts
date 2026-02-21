@@ -645,43 +645,111 @@ export type Database = {
           },
         ]
       }
-      flow_map_links: {
+      flow_map_link_items: {
         Row: {
           created_at: string
+          direction: string
+          id: string
+          key_: string
+          link_id: string
+          metric: string
+          name: string
+          side: string
+          tenant_id: string
+          zabbix_host_id: string
+          zabbix_item_id: string
+        }
+        Insert: {
+          created_at?: string
+          direction: string
+          id?: string
+          key_?: string
+          link_id: string
+          metric: string
+          name?: string
+          side: string
+          tenant_id: string
+          zabbix_host_id: string
+          zabbix_item_id: string
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          id?: string
+          key_?: string
+          link_id?: string
+          metric?: string
+          name?: string
+          side?: string
+          tenant_id?: string
+          zabbix_host_id?: string
+          zabbix_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_fmli_link"
+            columns: ["link_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "flow_map_links"
+            referencedColumns: ["id", "tenant_id"]
+          },
+        ]
+      }
+      flow_map_links: {
+        Row: {
+          capacity_mbps: number
+          created_at: string
+          current_status: string
           dest_host_id: string
+          dest_role: string
           geometry: Json
           id: string
           is_ring: boolean
+          last_status_change: string | null
           link_type: string
           map_id: string
           origin_host_id: string
+          origin_role: string
           priority: number
+          status_strategy: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          capacity_mbps?: number
           created_at?: string
+          current_status?: string
           dest_host_id: string
+          dest_role?: string
           geometry?: Json
           id?: string
           is_ring?: boolean
+          last_status_change?: string | null
           link_type?: string
           map_id: string
           origin_host_id: string
+          origin_role?: string
           priority?: number
+          status_strategy?: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          capacity_mbps?: number
           created_at?: string
+          current_status?: string
           dest_host_id?: string
+          dest_role?: string
           geometry?: Json
           id?: string
           is_ring?: boolean
+          last_status_change?: string | null
           link_type?: string
           map_id?: string
           origin_host_id?: string
+          origin_role?: string
           priority?: number
+          status_strategy?: string
           tenant_id?: string
           updated_at?: string
         }
