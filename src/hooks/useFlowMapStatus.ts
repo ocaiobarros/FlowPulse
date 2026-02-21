@@ -2,6 +2,15 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { HostStatus, FlowMapHost } from "@/hooks/useFlowMaps";
 
+export interface LinkEvent {
+  id: string;
+  link_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+}
+
 const BROADCAST_CHANNEL_NAME = "flowmap-status-poll";
 const LEADER_HEARTBEAT_MS = 5_000;
 const LEADER_TIMEOUT_MS = 8_000;
@@ -31,6 +40,8 @@ export function useFlowMapStatus({
   const [statusMap, setStatusMap] = useState<Record<string, HostStatus>>({});
   const [impactedLinks, setImpactedLinks] = useState<string[]>([]);
   const [isolatedNodes, setIsolatedNodes] = useState<string[]>([]);
+  const [linkStatuses, setLinkStatuses] = useState<Record<string, { status: string; originHost: string; destHost: string }>>({});
+  const [linkEvents, setLinkEvents] = useState<LinkEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -86,6 +97,8 @@ export function useFlowMapStatus({
           setStatusMap(hostsData);
           setImpactedLinks(payload.impactedLinks ?? []);
           setIsolatedNodes(payload.isolatedNodes ?? []);
+          setLinkStatuses(payload.linkStatuses ?? {});
+          setLinkEvents(payload.linkEvents ?? []);
         }
       }
 
@@ -165,13 +178,14 @@ export function useFlowMapStatus({
       }
 
       if (msg.type === "status-data" && !isLeaderRef.current && msg.payload) {
-        // Passive tab receives data from leader
         const hash = JSON.stringify(msg.payload);
         if (hash !== prevStatusRef.current) {
           prevStatusRef.current = hash;
           setStatusMap(msg.payload.hosts ?? {});
           setImpactedLinks(msg.payload.impactedLinks ?? []);
           setIsolatedNodes(msg.payload.isolatedNodes ?? []);
+          setLinkStatuses(msg.payload.linkStatuses ?? {});
+          setLinkEvents(msg.payload.linkEvents ?? []);
         }
       }
     };
@@ -228,5 +242,5 @@ export function useFlowMapStatus({
     return () => document.removeEventListener("visibilitychange", handler);
   }, [canPoll, startPolling, stopPolling]);
 
-  return { statusMap, impactedLinks, isolatedNodes, loading, error, refetch: fetchStatus };
+  return { statusMap, impactedLinks, isolatedNodes, linkStatuses, linkEvents, loading, error, refetch: fetchStatus };
 }

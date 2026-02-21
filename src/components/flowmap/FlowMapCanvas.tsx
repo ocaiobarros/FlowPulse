@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { FlowMap, FlowMapHost, FlowMapLink, HostStatus } from "@/hooks/useFlowMaps";
@@ -19,17 +19,6 @@ function hostIcon(status: "UP" | "DOWN" | "UNKNOWN", isCritical: boolean): L.Div
   });
 }
 
-function linkColor(
-  originStatus: string,
-  destStatus: string,
-  isImpacted: boolean,
-): string {
-  if (isImpacted) return "#8b0000";
-  if (originStatus === "UP" && destStatus === "UP") return "#00e676";
-  if (originStatus === "DOWN" && destStatus === "DOWN") return "#ff1744";
-  return "#ff9100";
-}
-
 /* ── Tooltip ── */
 function hostTooltipHtml(host: FlowMapHost, st: HostStatus | undefined): string {
   const status = st?.status ?? "UNKNOWN";
@@ -47,22 +36,76 @@ function hostTooltipHtml(host: FlowMapHost, st: HostStatus | undefined): string 
   `;
 }
 
+function linkTooltipHtml(
+  linkId: string,
+  linkStatus: { status: string; originHost: string; destHost: string } | undefined,
+  activeEvent: { status: string; started_at: string } | undefined,
+): string {
+  const st = linkStatus?.status ?? "UNKNOWN";
+  const color = st === "DOWN" ? "#ff1744" : st === "DEGRADED" ? "#ff9100" : st === "UP" ? "#00e676" : "#9e9e9e";
+  const origin = linkStatus?.originHost ?? "?";
+  const dest = linkStatus?.destHost ?? "?";
+
+  let durationHtml = "";
+  if (activeEvent && !activeEvent.started_at.includes("null")) {
+    const startMs = new Date(activeEvent.started_at).getTime();
+    const elapsed = Math.floor((Date.now() - startMs) / 1000);
+    const h = Math.floor(elapsed / 3600);
+    const m = Math.floor((elapsed % 3600) / 60);
+    const s = elapsed % 60;
+    const dur = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+    durationHtml = `<div style="margin-top:4px;">Duração: <span style="color:#ff9100;font-weight:700;">${dur}</span></div>`;
+  }
+
+  return `
+    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;min-width:180px;">
+      <div style="font-family:'Orbitron',sans-serif;font-weight:700;font-size:10px;color:#e0e0e0;margin-bottom:2px;">${origin} ⟷ ${dest}</div>
+      <hr style="border:none;border-top:1px solid #333;margin:4px 0;">
+      <div>Link: <span style="color:${color};font-weight:700;">${st}</span></div>
+      ${durationHtml}
+    </div>
+  `;
+}
+
 /* ── CSS injection ── */
 const STYLE_ID = "flowmap-pulse-style";
 function ensurePulseStyle() {
   if (document.getElementById(STYLE_ID)) return;
   const s = document.createElement("style");
   s.id = STYLE_ID;
-  s.textContent = `@keyframes fmPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.6);opacity:0.5}}`;
+  s.textContent = `
+    @keyframes fmPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.6);opacity:0.5}}
+    @keyframes fmLinkPulse{0%,100%{opacity:0.9}50%{opacity:0.3}}
+    .fm-link-pulse{animation:fmLinkPulse 1.2s ease-in-out infinite}
+    .fm-link-pulse-slow{animation:fmLinkPulse 2s ease-in-out infinite}
+    .flowmap-tooltip{background:#1a1a2e!important;border:1px solid #333!important;border-radius:8px!important;padding:8px 10px!important;box-shadow:0 4px 20px rgba(0,0,0,0.5)!important;}
+    .flowmap-tooltip::before{border-top-color:#333!important;}
+  `;
   document.head.appendChild(s);
 }
 
 /* ── Props ── */
+export interface LinkStatusInfo {
+  status: string;
+  originHost: string;
+  destHost: string;
+}
+
+export interface LinkEventInfo {
+  id: string;
+  link_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+}
+
 interface Props {
   flowMap: FlowMap;
   hosts: FlowMapHost[];
   links: FlowMapLink[];
   statusMap: Record<string, HostStatus>;
+  linkStatuses?: Record<string, LinkStatusInfo>;
+  linkEvents?: LinkEventInfo[];
   impactedLinkIds?: string[];
   isolatedNodeIds?: string[];
   onMapClick?: (lat: number, lon: number) => void;
@@ -75,6 +118,8 @@ export default function FlowMapCanvas({
   hosts,
   links,
   statusMap,
+  linkStatuses = {},
+  linkEvents = [],
   impactedLinkIds = [],
   isolatedNodeIds = [],
   onMapClick,
@@ -133,21 +178,27 @@ export default function FlowMapCanvas({
     });
   }, [focusHost]);
 
-  /* Update layers (no map recreation) */
+  /* Update layers */
   useEffect(() => {
     if (!layersRef.current) return;
     const { markers, lines: linesLayer } = layersRef.current;
     markers.clearLayers();
     linesLayer.clearLayers();
 
-    // Build host-id → status map keyed by flow_map_hosts.id
     const hostStatusById: Record<string, HostStatus> = {};
     hosts.forEach((h) => {
       hostStatusById[h.id] = statusMap[h.zabbix_host_id] ?? { status: "UNKNOWN" };
     });
 
-    // Use backend-provided impacted links set
     const impactedSet = new Set(impactedLinkIds);
+
+    // Build active events by link_id
+    const activeEventByLink = new Map<string, LinkEventInfo>();
+    for (const ev of linkEvents) {
+      if (!ev.ended_at) {
+        activeEventByLink.set(ev.link_id, ev);
+      }
+    }
 
     // Links
     links.forEach((link) => {
@@ -155,12 +206,20 @@ export default function FlowMapCanvas({
       const destHost = hosts.find((h) => h.id === link.dest_host_id);
       if (!originHost || !destHost) return;
 
-      const oSt = hostStatusById[link.origin_host_id]?.status ?? "UNKNOWN";
-      const dSt = hostStatusById[link.dest_host_id]?.status ?? "UNKNOWN";
+      const ls = linkStatuses[link.id];
+      const linkSt = ls?.status ?? "UNKNOWN";
       const isImpacted = impactedSet.has(link.id);
-      const color = linkColor(oSt, dSt, isImpacted);
-      const weight = isImpacted ? 5 : link.is_ring ? 3 : 2;
-      const dashArray = isImpacted ? "8, 4" : undefined;
+
+      // Color based on link status
+      let color: string;
+      if (linkSt === "DOWN") color = "#ff1744";
+      else if (linkSt === "DEGRADED") color = "#ff9100";
+      else if (isImpacted) color = "#8b0000";
+      else color = "#00e676";
+
+      const weight = linkSt === "DOWN" ? 5 : linkSt === "DEGRADED" ? 4 : isImpacted ? 5 : link.is_ring ? 3 : 2;
+      const dashArray = linkSt === "DOWN" ? "10, 6" : linkSt === "DEGRADED" ? "6, 4" : isImpacted ? "8, 4" : undefined;
+      const pulseClass = linkSt === "DOWN" ? "fm-link-pulse" : linkSt === "DEGRADED" ? "fm-link-pulse-slow" : "";
 
       const coords =
         link.geometry?.coordinates?.length >= 2
@@ -170,7 +229,22 @@ export default function FlowMapCanvas({
               [destHost.lat, destHost.lon] as [number, number],
             ];
 
-      L.polyline(coords, { color, weight, opacity: 0.85, dashArray }).addTo(linesLayer);
+      const polyline = L.polyline(coords, {
+        color,
+        weight,
+        opacity: 0.9,
+        dashArray,
+        className: pulseClass,
+      });
+
+      // Tooltip with event duration
+      const activeEvent = activeEventByLink.get(link.id);
+      polyline.bindTooltip(linkTooltipHtml(link.id, ls, activeEvent), {
+        className: "flowmap-tooltip",
+        sticky: true,
+      });
+
+      polyline.addTo(linesLayer);
     });
 
     // Hosts
@@ -188,7 +262,7 @@ export default function FlowMapCanvas({
       });
       marker.addTo(markers);
     });
-  }, [hosts, links, statusMap, impactedLinkIds, isolatedNodeIds]);
+  }, [hosts, links, statusMap, linkStatuses, linkEvents, impactedLinkIds, isolatedNodeIds]);
 
   return (
     <div ref={containerRef} className={`w-full h-full ${className ?? ""}`} style={{ background: "#0a0b10" }} />
