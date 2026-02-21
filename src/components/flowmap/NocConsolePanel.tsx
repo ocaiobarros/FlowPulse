@@ -188,7 +188,7 @@ export default function NocConsolePanel({
         </div>
 
         {/* Badges */}
-        {(impactedLinks.length > 0 || isolatedNodes.length > 0 || activeEvents.length > 0) && (
+        {(impactedLinks.length > 0 || isolatedNodes.length > 0 || activeEvents.length > 0) ? (
           <div className="flex flex-wrap gap-1">
             {impactedLinks.length > 0 && (
               <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-neon-red/10 text-neon-red border border-neon-red/20 font-display">
@@ -205,6 +205,11 @@ export default function NocConsolePanel({
                 {activeEvents.length} EVENTO{activeEvents.length > 1 ? "S" : ""} SLA
               </span>
             )}
+          </div>
+        ) : summary.down === 0 && (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-neon-green/5 border border-neon-green/20">
+            <span className="w-2 h-2 rounded-full bg-neon-green" />
+            <span className={`${badgeScale} font-display uppercase tracking-wider text-neon-green`}>Network Stable</span>
           </div>
         )}
       </div>
@@ -319,6 +324,7 @@ export default function NocConsolePanel({
                 </div>
                 {activeEvents.map((ev) => {
                   const ls = linkStatuses[ev.link_id];
+                  const linkObj = links.find((l) => l.id === ev.link_id);
                   return (
                     <div
                       key={ev.id}
@@ -332,6 +338,13 @@ export default function NocConsolePanel({
                           {ev.status}
                         </span>
                       </div>
+                      {linkObj && (
+                        <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground font-mono mb-1">
+                          <span className="px-1 py-0.5 rounded bg-muted/20 border border-border/20">{linkObj.link_type}</span>
+                          {linkObj.is_ring && <span className="px-1 py-0.5 rounded bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20">Ring</span>}
+                          {linkObj.priority > 0 && <span className="text-neon-amber">P{linkObj.priority}</span>}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-[9px] text-muted-foreground font-mono">
                         <span>Início: {new Date(ev.started_at).toLocaleTimeString("pt-BR")}</span>
                         <span className="text-neon-amber font-bold">{durationStr(ev.started_at)}</span>
@@ -350,6 +363,7 @@ export default function NocConsolePanel({
                 </div>
                 {closedEvents.map((ev) => {
                   const ls = linkStatuses[ev.link_id];
+                  const linkObj = links.find((l) => l.id === ev.link_id);
                   return (
                     <div
                       key={ev.id}
@@ -363,6 +377,13 @@ export default function NocConsolePanel({
                           {ev.status}
                         </span>
                       </div>
+                      {linkObj && (
+                        <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground/60 font-mono mb-1">
+                          <span>{linkObj.link_type}</span>
+                          {linkObj.is_ring && <span className="text-neon-cyan/50">Ring</span>}
+                          {linkObj.priority > 0 && <span>P{linkObj.priority}</span>}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-[9px] text-muted-foreground font-mono">
                         <span>{new Date(ev.started_at).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</span>
                         <span>{durationStr(ev.started_at, ev.ended_at)}</span>
