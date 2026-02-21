@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Map, Plus, Trash2, Eye, ArrowLeft, Zap, Settings2 } from "lucide-react";
@@ -16,6 +16,8 @@ import {
   type FlowMapLink,
   type HostStatus,
 } from "@/hooks/useFlowMaps";
+import { useFlowMapStatus } from "@/hooks/useFlowMapStatus";
+import { useZabbixConnections } from "@/hooks/useZabbixConnections";
 import FlowMapCanvas from "@/components/flowmap/FlowMapCanvas";
 import MapBuilderPanel, { type BuilderMode } from "@/components/flowmap/MapBuilderPanel";
 
@@ -141,35 +143,31 @@ function MapEditorView({ mapId }: { mapId: string }) {
   const [pendingOrigin, setPendingOrigin] = useState<string | null>(null);
   const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
   const [routePoints, setRoutePoints] = useState<[number, number][]>([]);
-  const [statusMap, setStatusMap] = useState<Record<string, HostStatus>>({});
   const [showBuilder, setShowBuilder] = useState(true);
   const [tenantId, setTenantId] = useState<string | null>(null);
 
+  // Fetch tenant
   useEffect(() => {
     supabase.from("profiles").select("tenant_id").limit(1).single().then(({ data }) => {
       if (data) setTenantId(data.tenant_id);
     });
   }, []);
 
-  // Mock status polling (replace with real Zabbix integration)
-  useEffect(() => {
-    if (!data?.hosts.length) return;
-    const poll = () => {
-      const map: Record<string, HostStatus> = {};
-      data.hosts.forEach((h) => {
-        map[h.zabbix_host_id] = {
-          status: Math.random() > 0.15 ? "UP" : "DOWN",
-          latency: Math.round(Math.random() * 50 + 1),
-          lastCheck: new Date().toISOString(),
-          availability24h: 95 + Math.random() * 5,
-        };
-      });
-      setStatusMap(map);
-    };
-    poll();
-    const iv = setInterval(poll, (data.map.refresh_interval ?? 30) * 1000);
-    return () => clearInterval(iv);
-  }, [data?.hosts, data?.map.refresh_interval]);
+  // Get first active Zabbix connection
+  const { connections } = useZabbixConnections();
+  const activeConnectionId = useMemo(
+    () => connections.find((c) => c.is_active)?.id,
+    [connections],
+  );
+
+  // Real Zabbix status polling
+  const { statusMap, loading: statusLoading, error: statusError } = useFlowMapStatus({
+    mapId,
+    hosts: data?.hosts ?? [],
+    connectionId: activeConnectionId,
+    refreshInterval: data?.map.refresh_interval ?? 30,
+    enabled: !!data && !!activeConnectionId,
+  });
 
   const handleMapClick = useCallback(
     (lat: number, lon: number) => {
@@ -305,6 +303,13 @@ function MapEditorView({ mapId }: { mapId: string }) {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="font-display text-sm font-bold text-neon-green tracking-wider">{data.map.name}</h1>
+          {/* Zabbix status indicator */}
+          <div className="flex items-center gap-1.5 ml-3">
+            <span className={`w-1.5 h-1.5 rounded-full ${activeConnectionId ? (statusError ? "bg-neon-red" : "bg-neon-green pulse-green") : "bg-muted-foreground/30"}`} />
+            <span className="text-[9px] font-mono text-muted-foreground">
+              {!activeConnectionId ? "Sem conexão Zabbix" : statusError ? "Erro" : statusLoading ? "Polling..." : "Zabbix Live"}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={() => setShowBuilder((p) => !p)}>
