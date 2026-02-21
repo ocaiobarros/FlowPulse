@@ -422,6 +422,31 @@ Deno.serve(async (req) => {
     // Ring break detection
     const ringResult = detectRingBreaks(links ?? [], resultByHostId);
 
+    // ─── Derive per-link status ───
+    const linkStatuses: Record<string, { status: string; originHost: string; destHost: string }> = {};
+    for (const link of (links ?? [])) {
+      const oSt = resultByHostId[link.origin_host_id]?.status ?? "UNKNOWN";
+      const dSt = resultByHostId[link.dest_host_id]?.status ?? "UNKNOWN";
+      const linkSt = deriveLinkStatus(oSt, dSt);
+      // Find host names
+      const oHost = hosts.find((h) => h.id === link.origin_host_id);
+      const dHost = hosts.find((h) => h.id === link.dest_host_id);
+      linkStatuses[link.id] = {
+        status: linkSt,
+        originHost: oHost?.host_name || oHost?.zabbix_host_id || "?",
+        destHost: dHost?.host_name || dHost?.zabbix_host_id || "?",
+      };
+    }
+
+    // ─── Fetch active link events for SLA panel ───
+    const { data: activeEvents } = await serviceClient
+      .from("flow_map_link_events")
+      .select("id, link_id, status, started_at, ended_at, duration_seconds")
+      .eq("tenant_id", tenantId as string)
+      .in("link_id", (links ?? []).map((l) => l.id))
+      .order("started_at", { ascending: false })
+      .limit(100);
+
     // ─── SLA Transition Engine (fire-and-forget, non-blocking) ───
     processLinkTransitions(serviceClient, links ?? [], resultByHostId, tenantId as string)
       .catch((err) => console.error("[flowmap-status] SLA transition error:", err));
@@ -430,6 +455,8 @@ Deno.serve(async (req) => {
       hosts: resultByZabbixId,
       impactedLinks: ringResult.impactedLinkIds,
       isolatedNodes: ringResult.isolatedNodeIds,
+      linkStatuses,
+      linkEvents: activeEvents ?? [],
     };
 
     // Store in cache
