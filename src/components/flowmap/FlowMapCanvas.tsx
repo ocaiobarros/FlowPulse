@@ -40,6 +40,7 @@ function linkTooltipHtml(
   linkId: string,
   linkStatus: { status: string; originHost: string; destHost: string } | undefined,
   activeEvent: { status: string; started_at: string } | undefined,
+  linkMeta?: { link_type: string; is_ring: boolean; priority: number },
 ): string {
   const st = linkStatus?.status ?? "UNKNOWN";
   const color = st === "DOWN" ? "#ff1744" : st === "DEGRADED" ? "#ff9100" : st === "UP" ? "#00e676" : "#9e9e9e";
@@ -57,12 +58,21 @@ function linkTooltipHtml(
     durationHtml = `<div style="margin-top:4px;">Duração: <span style="color:#ff9100;font-weight:700;">${dur}</span></div>`;
   }
 
+  const metaHtml = linkMeta
+    ? `<div style="margin-top:4px;color:#888;font-size:9px;">
+        Tipo: <span style="color:#e0e0e0;">${linkMeta.link_type}</span>
+        ${linkMeta.is_ring ? ' • <span style="color:#00e5ff;">Ring</span>' : ""}
+        ${linkMeta.priority > 0 ? ` • P${linkMeta.priority}` : ""}
+      </div>`
+    : "";
+
   return `
     <div style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;min-width:180px;">
       <div style="font-family:'Orbitron',sans-serif;font-weight:700;font-size:10px;color:#e0e0e0;margin-bottom:2px;">${origin} ⟷ ${dest}</div>
       <hr style="border:none;border-top:1px solid #333;margin:4px 0;">
       <div>Link: <span style="color:${color};font-weight:700;">${st}</span></div>
       ${durationHtml}
+      ${metaHtml}
     </div>
   `;
 }
@@ -200,6 +210,12 @@ export default function FlowMapCanvas({
       }
     }
 
+    // Determine if any link is DOWN or DEGRADED → dim healthy links
+    const hasIncident = links.some((l) => {
+      const s = linkStatuses[l.id]?.status;
+      return s === "DOWN" || s === "DEGRADED";
+    });
+
     // Links
     links.forEach((link) => {
       const originHost = hosts.find((h) => h.id === link.origin_host_id);
@@ -209,6 +225,7 @@ export default function FlowMapCanvas({
       const ls = linkStatuses[link.id];
       const linkSt = ls?.status ?? "UNKNOWN";
       const isImpacted = impactedSet.has(link.id);
+      const isAffected = linkSt === "DOWN" || linkSt === "DEGRADED" || isImpacted;
 
       // Color based on link status
       let color: string;
@@ -221,6 +238,9 @@ export default function FlowMapCanvas({
       const dashArray = linkSt === "DOWN" ? "10, 6" : linkSt === "DEGRADED" ? "6, 4" : isImpacted ? "8, 4" : undefined;
       const pulseClass = linkSt === "DOWN" ? "fm-link-pulse" : linkSt === "DEGRADED" ? "fm-link-pulse-slow" : "";
 
+      // Dim healthy links when there's an incident
+      const opacity = hasIncident && !isAffected ? 0.25 : 0.9;
+
       const coords =
         link.geometry?.coordinates?.length >= 2
           ? link.geometry.coordinates.map(([lon, lat]) => [lat, lon] as [number, number])
@@ -232,17 +252,21 @@ export default function FlowMapCanvas({
       const polyline = L.polyline(coords, {
         color,
         weight,
-        opacity: 0.9,
+        opacity,
         dashArray,
         className: pulseClass,
       });
 
-      // Tooltip with event duration
+      // Tooltip with event duration + link metadata
       const activeEvent = activeEventByLink.get(link.id);
-      polyline.bindTooltip(linkTooltipHtml(link.id, ls, activeEvent), {
-        className: "flowmap-tooltip",
-        sticky: true,
-      });
+      polyline.bindTooltip(
+        linkTooltipHtml(link.id, ls, activeEvent, {
+          link_type: link.link_type,
+          is_ring: link.is_ring,
+          priority: link.priority,
+        }),
+        { className: "flowmap-tooltip", sticky: true },
+      );
 
       polyline.addTo(linesLayer);
     });

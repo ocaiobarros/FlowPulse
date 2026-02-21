@@ -311,6 +311,22 @@ function MapEditorView({ mapId }: { mapId: string }) {
     });
   }, []);
 
+  // Global incident counters for header
+  const incidentCounts = useMemo(() => {
+    if (!data) return { hostsDown: 0, linkDown: 0, linkDegraded: 0, total: 0 };
+    let hostsDown = 0;
+    let linkDown = 0;
+    let linkDegraded = 0;
+    for (const h of data.hosts) {
+      if (statusMap[h.zabbix_host_id]?.status === "DOWN") hostsDown++;
+    }
+    for (const ls of Object.values(linkStatuses)) {
+      if (ls.status === "DOWN") linkDown++;
+      else if (ls.status === "DEGRADED") linkDegraded++;
+    }
+    return { hostsDown, linkDown, linkDegraded, total: hostsDown + linkDown + linkDegraded };
+  }, [data, statusMap, linkStatuses]);
+
   if (isLoading || !data) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
@@ -339,9 +355,23 @@ function MapEditorView({ mapId }: { mapId: string }) {
             <div className="flex items-center gap-1 ml-2">
               <span className={`w-1.5 h-1.5 rounded-full ${activeConnectionId ? (statusError ? "bg-neon-red" : "bg-neon-green pulse-green") : "bg-muted-foreground/30"}`} />
               <span className="text-[9px] font-mono text-muted-foreground">
-                {!activeConnectionId ? "Sem Zabbix" : statusError ? "Erro" : statusLoading ? "Polling..." : "Live"}
+              {!activeConnectionId ? "Sem Zabbix" : statusError ? "Erro" : statusLoading ? "Polling..." : "Live"}
               </span>
             </div>
+            {/* Global incident counter */}
+            {incidentCounts.total > 0 && (
+              <div className="flex items-center gap-2 ml-3 px-2 py-0.5 rounded-full bg-neon-red/10 border border-neon-red/20">
+                {incidentCounts.hostsDown > 0 && (
+                  <span className="text-[9px] font-display text-neon-red font-bold">🔴 {incidentCounts.hostsDown} DOWN</span>
+                )}
+                {incidentCounts.linkDown > 0 && (
+                  <span className="text-[9px] font-display text-neon-red font-bold">⛓ {incidentCounts.linkDown} LINK</span>
+                )}
+                {incidentCounts.linkDegraded > 0 && (
+                  <span className="text-[9px] font-display text-neon-amber font-bold">🟡 {incidentCounts.linkDegraded} DEGRADED</span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             <Button
