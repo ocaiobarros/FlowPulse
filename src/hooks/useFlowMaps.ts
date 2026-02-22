@@ -58,6 +58,7 @@ export interface FlowMapCTO {
   lat: number;
   lon: number;
   capacity: "8" | "16" | "32";
+  occupied_ports: number;
   status_calculated: "OK" | "DEGRADED" | "CRITICAL" | "UNKNOWN";
   metadata: Record<string, unknown>;
   zabbix_host_ids: string[];
@@ -78,6 +79,7 @@ export interface FlowMapCable {
   fiber_count: number;
   cable_type: "AS" | "ASU" | "Geleado" | "ADSS" | "Outro";
   distance_km: number;
+  is_backbone: boolean;
   color_override: string | null;
   created_at: string;
   updated_at: string;

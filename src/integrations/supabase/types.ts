@@ -631,6 +631,7 @@ export type Database = {
           map_id: string
           metadata: Json
           name: string
+          occupied_ports: number
           olt_host_id: string | null
           pon_port_index: number | null
           status_calculated: Database["public"]["Enums"]["cto_status"]
@@ -648,6 +649,7 @@ export type Database = {
           map_id: string
           metadata?: Json
           name?: string
+          occupied_ports?: number
           olt_host_id?: string | null
           pon_port_index?: number | null
           status_calculated?: Database["public"]["Enums"]["cto_status"]
@@ -665,6 +667,7 @@ export type Database = {
           map_id?: string
           metadata?: Json
           name?: string
+          occupied_ports?: number
           olt_host_id?: string | null
           pon_port_index?: number | null
           status_calculated?: Database["public"]["Enums"]["cto_status"]
