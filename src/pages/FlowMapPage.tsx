@@ -24,6 +24,7 @@ import ViabilityPanel from "@/components/flowmap/ViabilityPanel";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
 import { useIsMobile } from "@/hooks/use-mobile";
 import FieldOverlay from "@/components/flowmap/FieldOverlay";
+import OLTHealthPanel from "@/components/flowmap/OLTHealthPanel";
 
 /* ─────────── MAP LIST ─────────── */
 function MapListView() {
@@ -192,8 +193,16 @@ function MapEditorView({ mapId }: { mapId: string }) {
   // CTO telemetry state from aggregator
   const [ctoTelemetry, setCtoTelemetry] = useState<Record<string, {
     status: string; healthRatio: number; onuOnline: number; onuOffline: number;
-    onuAuthorized: number; ponLinkStatus: string; trafficIn: number | null;
+    onuAuthorized: number; onuUnprovisioned: number; ponLinkStatus: string; trafficIn: number | null;
     trafficOut: number | null; temperature: number | null; fanStatus: string | null;
+    fanRotation: number | null; txPower: number | null; cpuLoad: number | null; uptime: number | null;
+  }>>({});
+
+  // OLT-level health data
+  const [oltHealth, setOltHealth] = useState<Record<string, {
+    hostId: string; hostName: string; temperature: number | null;
+    fanStatus: string | null; fanRotation: number | null; cpuLoad: number | null;
+    uptime: number | null; totalOnuOnline: number; totalOnuOffline: number; totalUnprovisioned: number;
   }>>({});
 
   // CTO status aggregator polling
@@ -208,6 +217,9 @@ function MapEditorView({ mapId }: { mapId: string }) {
           const telMap: typeof ctoTelemetry = {};
           for (const c of result.ctos) telMap[c.id] = c;
           setCtoTelemetry(telMap);
+        }
+        if (result?.oltHealth) {
+          setOltHealth(result.oltHealth);
         }
       } catch (e) {
         console.warn("[CTO aggregator] error:", e);
@@ -520,7 +532,9 @@ function MapEditorView({ mapId }: { mapId: string }) {
             focusHost={focusHost}
           />
 
-          {/* Cable Vertex Editor */}
+          {/* OLT Health Panel — floating overlay */}
+          <OLTHealthPanel oltHealth={oltHealth} visible={Object.keys(oltHealth).length > 0} />
+
           {editingCableId && leafletMap && data.cables && (() => {
             const cable = data.cables.find((c) => c.id === editingCableId);
             return cable ? (

@@ -168,8 +168,15 @@ export interface LinkEventInfo {
 
 export interface CTOTelemetryData {
   status: string; healthRatio: number; onuOnline: number; onuOffline: number;
-  onuAuthorized: number; ponLinkStatus: string; trafficIn: number | null;
+  onuAuthorized: number; onuUnprovisioned: number; ponLinkStatus: string; trafficIn: number | null;
   trafficOut: number | null; temperature: number | null; fanStatus: string | null;
+  fanRotation: number | null; txPower: number | null; cpuLoad: number | null; uptime: number | null;
+}
+
+export interface OLTHealthData {
+  hostId: string; hostName: string; temperature: number | null;
+  fanStatus: string | null; fanRotation: number | null; cpuLoad: number | null;
+  uptime: number | null; totalOnuOnline: number; totalOnuOffline: number; totalUnprovisioned: number;
 }
 
 interface Props {
@@ -508,6 +515,40 @@ export default function FlowMapCanvas({
       const zoom = map.getZoom();
       if (zoom < 15) return; // LoD: only show FTTH at zoom >= 15
 
+      // Build CTO telemetry lookup for cable coloring
+      const ctoById = new Map<string, typeof ctos[0]>();
+      for (const c of ctos) ctoById.set(c.id, c);
+
+      // Dynamic cable color based on CTO health rules
+      const getCableColor = (cable: FlowMapCable): { color: string; label: string } => {
+        if (cable.color_override) return { color: cable.color_override, label: "" };
+
+        // Check target CTO telemetry (cables connect to CTOs)
+        const targetCto = cable.target_node_type === "cto" ? ctoById.get(cable.target_node_id) : null;
+        const tel = targetCto ? ctoTelemetry[targetCto.id] : null;
+
+        if (tel) {
+          // 🔴 Massiva: health < 50% (ONUs dropped >50%)
+          if (tel.healthRatio < 50 && tel.onuAuthorized > 0) {
+            return { color: "#ff1744", label: "⚠ MASSIVA" };
+          }
+          // 🟡 Degradação: Tx Power fora do range (<-25 dBm)
+          if (tel.txPower != null && tel.txPower <= -25) {
+            return { color: "#ff9100", label: "⚠ SINAL BAIXO" };
+          }
+          // 🟣 Configuração: ONUs desprovisionadas aguardando
+          if (tel.onuUnprovisioned > 0) {
+            return { color: "#bb86fc", label: `⚙ ${tel.onuUnprovisioned} DESPROV` };
+          }
+          // 🟢 Normal
+          if (tel.status === "OK") return { color: "#00e676", label: "" };
+          if (tel.status === "DEGRADED") return { color: "#ff9100", label: "" };
+          if (tel.status === "CRITICAL") return { color: "#ff1744", label: "" };
+        }
+
+        return { color: "#00e5ff", label: "" };
+      };
+
       // Render cables first (below CTOs)
       cables.forEach((cable) => {
         const coords = cable.geometry?.coordinates?.length >= 2
@@ -515,20 +556,22 @@ export default function FlowMapCanvas({
           : [];
         if (coords.length < 2) return;
 
-        const cableColor = cable.color_override || "#00e5ff";
+        const { color: cableColor, label: cableAlert } = getCableColor(cable);
         const glow = L.polyline(coords, { color: cableColor, weight: 6, opacity: 0.15 });
         glow.addTo(cableLayer);
 
+        const isCritical = cableColor === "#ff1744";
         const line = L.polyline(coords, {
           color: cableColor,
-          weight: 2,
+          weight: isCritical ? 3 : 2,
           opacity: 0.8,
-          dashArray: "4, 8",
-          className: "fm-traffic-glow",
+          dashArray: isCritical ? undefined : "4, 8",
+          className: isCritical ? "fm-link-pulse" : "fm-traffic-glow",
         });
         line.bindTooltip(
           `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;">
             <div style="font-weight:700;color:#e0e0e0;">${cable.label || "Cabo"}</div>
+            ${cableAlert ? `<div style="color:${cableColor};font-weight:700;font-size:10px;margin:2px 0;">${cableAlert}</div>` : ""}
             <div>Tipo: <span style="color:#00e5ff;">${cable.cable_type}</span></div>
             <div>Fibras: <span style="color:#00e676;">${cable.fiber_count}</span></div>
             ${cable.distance_km ? `<div>Distância: <span style="color:#ff9100;">${cable.distance_km} km</span></div>` : ""}
@@ -596,35 +639,89 @@ export default function FlowMapCanvas({
           return `${bps.toFixed(0)} bps`;
         };
 
-        // Build rich tooltip
-        let tooltipHtml = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:200px;line-height:1.6;">
-          <div style="font-family:'Orbitron',sans-serif;font-weight:700;font-size:12px;color:#e0e0e0;margin-bottom:4px;">${cto.name || "CTO"}</div>
-          <div>Status: <span style="color:${statusColor};font-weight:700;">${effectiveStatus}</span>${healthPct ? ` <span style="color:#888;font-size:10px;">(${healthPct})</span>` : ""}</div>
-          <div>Capacidade: <span style="color:#00e5ff;">${cto.occupied_ports}/${cto.capacity} portas</span></div>`;
+        // Build rich tooltip — 360° Vision Card
+        let tooltipHtml = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:240px;max-width:300px;line-height:1.6;">
+          <div style="font-family:'Orbitron',sans-serif;font-weight:700;font-size:13px;color:#e0e0e0;margin-bottom:2px;letter-spacing:0.5px;">${cto.name || "CTO"}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};box-shadow:0 0 6px ${statusColor};">&nbsp;</span>
+            <span style="color:${statusColor};font-weight:700;font-size:12px;">${effectiveStatus}</span>
+            ${healthPct ? `<span style="color:#888;font-size:10px;margin-left:auto;">${healthPct} saúde</span>` : ""}
+          </div>`;
 
         if (tel) {
           const ponColor = tel.ponLinkStatus === "UP" ? "#00e676" : tel.ponLinkStatus === "DOWN" ? "#ff1744" : "#9e9e9e";
-          tooltipHtml += `<hr style="border:none;border-top:1px solid #333;margin:6px 0;">
-            <div style="font-weight:700;color:#e0e0e0;margin-bottom:2px;">📡 PON Telemetria</div>
-            <div>Link: <span style="color:${ponColor};font-weight:700;">${tel.ponLinkStatus}</span></div>
-            <div>ONUs: <span style="color:#00e676;">▲ ${tel.onuOnline} ON</span> • <span style="color:#ff4444;">${tel.onuOffline} OFF</span> • <span style="color:#3B82F6;">Σ ${tel.onuAuthorized}</span></div>`;
 
+          // Status da Porta + Sinal Laser
+          tooltipHtml += `<div style="background:#111318;border-radius:6px;padding:6px 8px;margin:4px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="color:#888;">Status Porta</span>
+              <span style="color:${ponColor};font-weight:700;">${tel.ponLinkStatus === "UP" ? "🟢 UP" : tel.ponLinkStatus === "DOWN" ? "🔴 DOWN" : "⚪ —"}</span>
+            </div>
+            ${tel.txPower != null ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
+              <span style="color:#888;">Sinal Laser</span>
+              <span style="color:${tel.txPower <= -25 ? '#ff1744' : tel.txPower <= -20 ? '#ff9100' : '#00e676'};font-weight:700;">${tel.txPower.toFixed(2)} dBm</span>
+            </div>` : ""}
+          </div>`;
+
+          // Clientes ON / OFF
+          tooltipHtml += `<div style="background:#111318;border-radius:6px;padding:6px 8px;margin:4px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="color:#888;">Clientes ON</span>
+              <span style="color:#00e676;font-weight:700;font-size:14px;">${tel.onuOnline}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+              <span style="color:#888;">Clientes OFF</span>
+              <span style="color:#ff4444;font-weight:700;">${tel.onuOffline}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+              <span style="color:#888;">Autorizadas</span>
+              <span style="color:#3B82F6;">${tel.onuAuthorized}</span>
+            </div>
+            ${tel.onuUnprovisioned > 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+              <span style="color:#888;">Desprovisionadas</span>
+              <span style="color:#bb86fc;font-weight:700;">⚙ ${tel.onuUnprovisioned}</span>
+            </div>` : ""}
+          </div>`;
+
+          // Tráfego
           if (tel.trafficIn != null || tel.trafficOut != null) {
-            tooltipHtml += `<div style="margin-top:4px;">📊 <span style="color:#ff9100;">▲ ${fmtBpsCto(tel.trafficOut)}</span> <span style="color:#00e5ff;">▼ ${fmtBpsCto(tel.trafficIn)}</span></div>`;
+            const totalBps = (tel.trafficIn ?? 0) + (tel.trafficOut ?? 0);
+            tooltipHtml += `<div style="background:#111318;border-radius:6px;padding:6px 8px;margin:4px 0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="color:#888;">Tráfego Atual</span>
+                <span style="color:#00e5ff;font-weight:700;">${fmtBpsCto(totalBps)}</span>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:3px;font-size:10px;">
+                <span style="color:#ff9100;">▲ ${fmtBpsCto(tel.trafficOut)}</span>
+                <span style="color:#00e5ff;">▼ ${fmtBpsCto(tel.trafficIn)}</span>
+              </div>
+            </div>`;
           }
 
+          // Hardware mini-indicators
+          const hwParts: string[] = [];
           if (tel.temperature != null) {
-            const tempColor = tel.temperature >= 60 ? "#ff1744" : tel.temperature >= 45 ? "#ff9100" : "#00e676";
-            tooltipHtml += `<div>🌡 Temp: <span style="color:${tempColor};font-weight:700;">${tel.temperature}°C</span></div>`;
+            const tc = tel.temperature >= 60 ? "#ff1744" : tel.temperature >= 45 ? "#ff9100" : "#00e676";
+            hwParts.push(`<span style="color:${tc};">🌡${tel.temperature}°C</span>`);
           }
           if (tel.fanStatus) {
-            const fanColor = tel.fanStatus === "ACTIVE" ? "#00e676" : "#ff1744";
-            tooltipHtml += `<div>🌀 Fan: <span style="color:${fanColor};font-weight:700;">${tel.fanStatus}</span></div>`;
+            const fc = tel.fanStatus === "ACTIVE" ? "#00e676" : "#ff1744";
+            hwParts.push(`<span style="color:${fc};">🌀${tel.fanStatus}${tel.fanRotation != null ? ` ${tel.fanRotation}%` : ""}</span>`);
           }
+          if (tel.cpuLoad != null) {
+            const cc = tel.cpuLoad >= 80 ? "#ff1744" : tel.cpuLoad >= 50 ? "#ff9100" : "#00e676";
+            hwParts.push(`<span style="color:${cc};">⚡${tel.cpuLoad.toFixed(0)}%</span>`);
+          }
+          if (hwParts.length > 0) {
+            tooltipHtml += `<div style="display:flex;gap:8px;font-size:10px;margin-top:4px;padding-top:4px;border-top:1px solid #222;">${hwParts.join("")}</div>`;
+          }
+        } else {
+          // No telemetry — basic info
+          tooltipHtml += `<div style="color:#666;font-size:10px;">Capacidade: ${cto.occupied_ports}/${cto.capacity} portas</div>`;
         }
 
-        if (cto.pon_port_index) tooltipHtml += `<div style="color:#888;font-size:10px;">Porta PON: ${cto.pon_port_index}</div>`;
-        if (cto.description) tooltipHtml += `<div style="color:#888;font-size:10px;margin-top:4px;">${cto.description}</div>`;
+        if (cto.pon_port_index) tooltipHtml += `<div style="color:#555;font-size:9px;margin-top:4px;">PON #${cto.pon_port_index}</div>`;
+        if (cto.description) tooltipHtml += `<div style="color:#555;font-size:9px;">${cto.description}</div>`;
         tooltipHtml += `</div>`;
 
         const marker = L.marker([cto.lat, cto.lon], { icon });
