@@ -99,6 +99,20 @@ export interface FlowMapLinkItem {
   created_at: string;
 }
 
+export interface FlowMapReserva {
+  id: string;
+  tenant_id: string;
+  map_id: string;
+  label: string;
+  lat: number;
+  lon: number;
+  comprimento_m: number;
+  tipo_cabo: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface HostStatus {
   status: "UP" | "DOWN" | "UNKNOWN";
   latency?: number;
@@ -127,12 +141,13 @@ export function useFlowMapDetail(mapId: string | undefined) {
     queryKey: ["flow-map", mapId],
     enabled: !!mapId,
     queryFn: async () => {
-      const [mapRes, hostsRes, linksRes, ctosRes, cablesRes] = await Promise.all([
+      const [mapRes, hostsRes, linksRes, ctosRes, cablesRes, reservasRes] = await Promise.all([
         supabase.from("flow_maps").select("*").eq("id", mapId!).single(),
         supabase.from("flow_map_hosts").select("*").eq("map_id", mapId!),
         supabase.from("flow_map_links").select("*").eq("map_id", mapId!),
         supabase.from("flow_map_ctos" as any).select("*").eq("map_id", mapId!),
         supabase.from("flow_map_cables" as any).select("*").eq("map_id", mapId!),
+        supabase.from("flow_map_reservas" as any).select("*").eq("map_id", mapId!),
       ]);
       if (mapRes.error) throw mapRes.error;
       return {
@@ -141,6 +156,7 @@ export function useFlowMapDetail(mapId: string | undefined) {
         links: (linksRes.data ?? []) as unknown as FlowMapLink[],
         ctos: (ctosRes.data ?? []) as unknown as FlowMapCTO[],
         cables: (cablesRes.data ?? []) as unknown as FlowMapCable[],
+        reservas: (reservasRes.data ?? []) as unknown as FlowMapReserva[],
       };
     },
   });
@@ -342,6 +358,26 @@ export function useFlowMapMutations() {
     onSuccess: (mapId) => qc.invalidateQueries({ queryKey: ["flow-map", mapId] }),
   });
 
+  /* ── Reserva mutations ── */
+  const addReserva = useMutation({
+    mutationFn: async (input: Omit<FlowMapReserva, "id" | "created_at" | "updated_at">) => {
+      const { data, error } = await supabase.from("flow_map_reservas" as any).insert(input as any).select().single();
+      if (error) throw error;
+      return data as unknown as FlowMapReserva;
+    },
+    onSuccess: (_, v) => qc.invalidateQueries({ queryKey: ["flow-map", v.map_id] }),
+    onError: (e) => toast({ variant: "destructive", title: "Erro ao criar reserva", description: String(e) }),
+  });
+
+  const removeReserva = useMutation({
+    mutationFn: async ({ id, map_id }: { id: string; map_id: string }) => {
+      const { error } = await supabase.from("flow_map_reservas" as any).delete().eq("id", id);
+      if (error) throw error;
+      return map_id;
+    },
+    onSuccess: (mapId) => qc.invalidateQueries({ queryKey: ["flow-map", mapId] }),
+  });
+
   return {
     createMap, updateMap, deleteMap,
     addHost, updateHost, removeHost,
@@ -349,5 +385,6 @@ export function useFlowMapMutations() {
     addLinkItem, removeLinkItem,
     addCTO, updateCTO, removeCTO,
     addCable, updateCable, removeCable,
+    addReserva, removeReserva,
   };
 }

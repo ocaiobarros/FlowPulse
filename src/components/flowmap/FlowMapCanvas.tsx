@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { FlowMap, FlowMapHost, FlowMapLink, HostStatus, FlowMapCTO, FlowMapCable } from "@/hooks/useFlowMaps";
+import type { FlowMap, FlowMapHost, FlowMapLink, HostStatus, FlowMapCTO, FlowMapCable, FlowMapReserva } from "@/hooks/useFlowMaps";
 import type { LinkTraffic } from "@/hooks/useFlowMapStatus";
 
 /* ── Icon factories ── */
@@ -172,6 +172,7 @@ interface Props {
   links: FlowMapLink[];
   ctos?: FlowMapCTO[];
   cables?: FlowMapCable[];
+  reservas?: FlowMapReserva[];
   statusMap: Record<string, HostStatus>;
   linkStatuses?: Record<string, LinkStatusInfo>;
   linkEvents?: LinkEventInfo[];
@@ -192,6 +193,7 @@ export default function FlowMapCanvas({
   links,
   ctos = [],
   cables = [],
+  reservas = [],
   statusMap,
   linkStatuses = {},
   linkEvents = [],
@@ -207,7 +209,7 @@ export default function FlowMapCanvas({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const layersRef = useRef<{ markers: L.LayerGroup; lines: L.LayerGroup; labels: L.LayerGroup; ctoLayer: L.LayerGroup; cableLayer: L.LayerGroup } | null>(null);
+  const layersRef = useRef<{ markers: L.LayerGroup; lines: L.LayerGroup; labels: L.LayerGroup; ctoLayer: L.LayerGroup; cableLayer: L.LayerGroup; reservaLayer: L.LayerGroup } | null>(null);
 
   /* Init map once */
   useEffect(() => {
@@ -233,7 +235,8 @@ export default function FlowMapCanvas({
     const labels = L.layerGroup().addTo(map);
     const ctoLayer = L.layerGroup().addTo(map);
     const cableLayer = L.layerGroup().addTo(map);
-    layersRef.current = { markers, lines, labels, ctoLayer, cableLayer };
+    const reservaLayer = L.layerGroup().addTo(map);
+    layersRef.current = { markers, lines, labels, ctoLayer, cableLayer, reservaLayer };
     mapRef.current = map;
     onMapReady?.(map);
 
@@ -487,12 +490,13 @@ export default function FlowMapCanvas({
   /* ── CTO & Cable rendering with Level of Detail ── */
   useEffect(() => {
     if (!layersRef.current || !mapRef.current) return;
-    const { ctoLayer, cableLayer } = layersRef.current;
+    const { ctoLayer, cableLayer, reservaLayer } = layersRef.current;
     const map = mapRef.current;
 
     function renderFTTH() {
       ctoLayer.clearLayers();
       cableLayer.clearLayers();
+      reservaLayer.clearLayers();
       const zoom = map.getZoom();
       if (zoom < 15) return; // LoD: only show FTTH at zoom >= 15
 
@@ -525,6 +529,34 @@ export default function FlowMapCanvas({
         );
         line.addTo(cableLayer);
       });
+
+      // Render reservas at zoom >= 16
+      if (zoom >= 16) {
+        reservas.forEach((r) => {
+          const icon = L.divIcon({
+            className: "",
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+            html: `<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
+              <div style="width:16px;height:16px;border-radius:50%;background:#ff9100;box-shadow:0 0 8px #ff910080;border:2px solid #0a0b10;display:flex;align-items:center;justify-content:center;">
+                <span style="font-size:8px;font-weight:900;color:#0a0b10;">R</span>
+              </div>
+            </div>`,
+          });
+
+          const marker = L.marker([r.lat, r.lon], { icon });
+          marker.bindTooltip(
+            `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:140px;">
+              <div style="font-family:'Orbitron',sans-serif;font-weight:700;font-size:12px;color:#ff9100;margin-bottom:4px;">📦 ${r.label || "Reserva"}</div>
+              <div>Comprimento: <span style="color:#00e5ff;">${r.comprimento_m}m</span></div>
+              <div>Tipo: <span style="color:#00e676;">${r.tipo_cabo}</span></div>
+              ${r.description ? `<div style="color:#888;font-size:10px;margin-top:4px;">${r.description}</div>` : ""}
+            </div>`,
+            { className: "flowmap-tooltip", direction: "top", offset: [0, -12] },
+          );
+          marker.addTo(reservaLayer);
+        });
+      }
 
       // Render CTOs
       ctos.forEach((cto) => {
@@ -572,7 +604,7 @@ export default function FlowMapCanvas({
     renderFTTH();
     map.on("zoomend", renderFTTH);
     return () => { map.off("zoomend", renderFTTH); };
-  }, [ctos, cables, onCTOClick]);
+  }, [ctos, cables, reservas, onCTOClick]);
 
   return (
     <div ref={containerRef} className={`w-full h-full ${className ?? ""}`} style={{ background: "#0a0b10" }} />

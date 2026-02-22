@@ -1435,6 +1435,23 @@ export type Database = {
         }
         Returns: undefined
       }
+      check_viability: {
+        Args: {
+          p_lat: number
+          p_lon: number
+          p_map_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          capacity: string
+          cto_id: string
+          cto_name: string
+          distance_m: number
+          free_ports: number
+          occupied_ports: number
+          status_calculated: string
+        }[]
+      }
       get_user_tenant_id: { Args: { p_user_id: string }; Returns: string }
       has_role: {
         Args: {
