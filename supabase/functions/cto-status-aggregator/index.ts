@@ -84,11 +84,30 @@ interface CTOTelemetry {
   onuOnline: number;
   onuOffline: number;
   onuAuthorized: number;
+  onuUnprovisioned: number;
   ponLinkStatus: string;
   trafficIn: number | null;
   trafficOut: number | null;
   temperature: number | null;
   fanStatus: string | null;
+  fanRotation: number | null;
+  txPower: number | null;
+  cpuLoad: number | null;
+  uptime: number | null;
+}
+
+/* ─── OLT-level aggregated health ─── */
+interface OLTHealth {
+  hostId: string;
+  hostName: string;
+  temperature: number | null;
+  fanStatus: string | null;
+  fanRotation: number | null;
+  cpuLoad: number | null;
+  uptime: number | null;
+  totalOnuOnline: number;
+  totalOnuOffline: number;
+  totalUnprovisioned: number;
 }
 
 /* ─── Main Handler ─── */
@@ -184,13 +203,13 @@ Deno.serve(async (req) => {
         selectInterfaces: ["available"],
       }) as Promise<Array<{ hostid: string; available?: string; interfaces?: Array<{ available: string }> }>>,
 
-      // Fetch OLT-specific items: ONU counts, PON status, traffic, temperature, fan
+      // Fetch OLT-specific items: ONU counts, PON status, traffic, temperature, fan, tx power, uptime, cpu, desprovisionadas
       zabbixCall(conn.url, zabbixAuth, "item.get", {
         hostids: zbxHostIds,
         output: ["itemid", "hostid", "key_", "lastvalue", "name"],
-        search: { key_: "pon,ramal,descoberta,fan,CPU,net.if" },
+        search: { key_: "pon,ramal,descoberta,fan,CPU,net.if,desprovisionadas,1.3.6.1.2.1.1.3,1.3.6.1.4.1.2011.6.128.1.1.2.23.1.4,1.3.6.1.4.1.2011.6.1.1.5.1.9" },
         searchByAny: true,
-        limit: 2000,
+        limit: 3000,
       }) as Promise<Array<{ itemid: string; hostid: string; key_: string; lastvalue: string; name: string }>>,
     ]);
 
@@ -230,11 +249,16 @@ Deno.serve(async (req) => {
       let onuOnline = 0;
       let onuOffline = 0;
       let onuAuthorized = 0;
+      let onuUnprovisioned = 0;
       let ponLinkStatus = "UNKNOWN";
       let trafficIn: number | null = null;
       let trafficOut: number | null = null;
       let temperature: number | null = null;
       let fanStatus: string | null = null;
+      let fanRotation: number | null = null;
+      let txPower: number | null = null;
+      let cpuLoad: number | null = null;
+      let uptime: number | null = null;
 
       // Search items across all relevant hosts
       for (const zbxId of relevantIds) {
@@ -255,14 +279,25 @@ Deno.serve(async (req) => {
           else if (key.includes("ramal.autorizadas")) {
             onuAuthorized += parseInt(val) || 0;
           }
+          // ONUs Desprovisionadas
+          else if (key.includes("desprovisionadas")) {
+            onuUnprovisioned += parseInt(val) || 0;
+          }
           // PON Link Status: ramal.status
           else if (key.includes("ramal.status")) {
-            // Filter by PON index if set
             if (ponIndex != null) {
               const match = key.match(/ramal\.status\[(\d+)\./);
               if (match && parseInt(match[1]) !== ponIndex) continue;
             }
             ponLinkStatus = val === "1" ? "UP" : val === "2" ? "DOWN" : "UNKNOWN";
+          }
+          // Tx Power (dBm) — OID 1.3.6.1.4.1.2011.6.128.1.1.2.23.1.4
+          else if (key.includes("1.3.6.1.4.1.2011.6.128.1.1.2.23.1.4")) {
+            const pw = parseFloat(val);
+            if (!isNaN(pw)) {
+              // Value comes pre-multiplied by 0.01 from Zabbix preprocessing
+              txPower = txPower == null ? pw : Math.min(txPower, pw); // worst-case
+            }
           }
           // Traffic In (bits received)
           else if (key.includes("net.if.in[ifhcinoctets")) {
@@ -284,6 +319,21 @@ Deno.serve(async (req) => {
           // Fan status
           else if (key.includes("1.3.6.1.4.1.2011.6.1.1.5.1.6")) {
             fanStatus = val === "1" ? "ACTIVE" : "INACTIVE";
+          }
+          // Fan rotation (%)
+          else if (key.includes("1.3.6.1.4.1.2011.6.1.1.5.1.9")) {
+            const rot = parseInt(val) || 0;
+            fanRotation = fanRotation == null ? rot : Math.max(fanRotation, rot);
+          }
+          // CPU load
+          else if (key.includes("cpu[")) {
+            const cpu = parseFloat(val) || 0;
+            cpuLoad = cpuLoad == null ? cpu : Math.max(cpuLoad, cpu);
+          }
+          // Uptime (SNMP sysUptime — already in seconds via 0.01 multiplier)
+          else if (key.includes("1.3.6.1.2.1.1.3.0")) {
+            const ut = parseFloat(val) || 0;
+            uptime = uptime == null ? ut : Math.max(uptime, ut);
           }
         }
       }
@@ -325,11 +375,16 @@ Deno.serve(async (req) => {
         onuOnline,
         onuOffline,
         onuAuthorized: totalAuthorized,
+        onuUnprovisioned,
         ponLinkStatus,
         trafficIn,
         trafficOut,
         temperature,
         fanStatus,
+        fanRotation,
+        txPower,
+        cpuLoad,
+        uptime,
       });
     }
 
@@ -344,9 +399,44 @@ Deno.serve(async (req) => {
     }
     if (ops.length > 0) await Promise.all(ops);
 
-    console.log(`[cto-status-aggregator] Processed ${ctos.length} CTOs, updated ${updates.length}`);
+    // Aggregate OLT-level health per unique Zabbix host
+    const oltHealthMap = new Map<string, OLTHealth>();
+    for (const zbxId of allZbxIds) {
+      const items = itemsByHost.get(zbxId) ?? [];
+      const health: OLTHealth = { hostId: zbxId, hostName: "", temperature: null, fanStatus: null, fanRotation: null, cpuLoad: null, uptime: null, totalOnuOnline: 0, totalOnuOffline: 0, totalUnprovisioned: 0 };
+      for (const item of items) {
+        const key = item.key_.toLowerCase();
+        const val = item.lastvalue;
+        if (key.includes("1.3.6.1.4.1.2011.6.3.3.2.1.13")) {
+          const t = parseInt(val) || 0;
+          if (t > 0 && t < 2147483647) health.temperature = health.temperature == null ? t : Math.max(health.temperature, t);
+        } else if (key.includes("1.3.6.1.4.1.2011.6.1.1.5.1.6")) {
+          health.fanStatus = val === "1" ? "ACTIVE" : "INACTIVE";
+        } else if (key.includes("1.3.6.1.4.1.2011.6.1.1.5.1.9")) {
+          const r = parseInt(val) || 0;
+          health.fanRotation = health.fanRotation == null ? r : Math.max(health.fanRotation, r);
+        } else if (key.includes("cpu[")) {
+          const c = parseFloat(val) || 0;
+          health.cpuLoad = health.cpuLoad == null ? c : Math.max(health.cpuLoad, c);
+        } else if (key.includes("1.3.6.1.2.1.1.3.0")) {
+          health.uptime = parseFloat(val) || 0;
+        } else if (key.includes("pon[") && key.includes(",\"1\",")) {
+          health.totalOnuOnline += parseInt(val) || 0;
+        } else if (key.includes("pon[") && key.includes(",\"2\",")) {
+          health.totalOnuOffline += parseInt(val) || 0;
+        } else if (key.includes("desprovisionadas")) {
+          health.totalUnprovisioned += parseInt(val) || 0;
+        }
+      }
+      // Only include hosts that have some OLT data
+      if (health.temperature != null || health.cpuLoad != null || health.uptime != null || health.totalOnuOnline > 0) {
+        oltHealthMap.set(zbxId, health);
+      }
+    }
 
-    return json({ updated: updates.length, ctos: ctoTelemetry });
+    console.log(`[cto-status-aggregator] Processed ${ctos.length} CTOs, updated ${updates.length}, OLTs: ${oltHealthMap.size}`);
+
+    return json({ updated: updates.length, ctos: ctoTelemetry, oltHealth: Object.fromEntries(oltHealthMap) });
   } catch (err) {
     console.error("[cto-status-aggregator] error:", err);
     if (err instanceof Error && err.message.includes("login failed")) tokenCache.clear();
