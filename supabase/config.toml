@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.bgp-collector]
 verify_jwt = false
+
+[functions.cto-status-aggregator]
+verify_jwt = false

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Map, Plus, Trash2, Eye, ArrowLeft, Zap, Settings2, Radio, Maximize, Minimize, Volume2, VolumeX } from "lucide-react";
+import { Map, Plus, Trash2, Eye, ArrowLeft, Zap, Settings2, Radio, Maximize, Minimize, Volume2, VolumeX, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,6 +20,7 @@ import FlowMapCanvas from "@/components/flowmap/FlowMapCanvas";
 import MapBuilderPanel, { type BuilderMode } from "@/components/flowmap/MapBuilderPanel";
 import NocConsolePanel from "@/components/flowmap/NocConsolePanel";
 import CableVertexEditor from "@/components/flowmap/CableVertexEditor";
+import ViabilityPanel from "@/components/flowmap/ViabilityPanel";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
 import { useIsMobile } from "@/hooks/use-mobile";
 import FieldOverlay from "@/components/flowmap/FieldOverlay";
@@ -131,7 +132,7 @@ function MapEditorView({ mapId }: { mapId: string }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { data, isLoading } = useFlowMapDetail(mapId);
-  const { addHost, removeHost, updateHost, addLink, updateLink, removeLink, addLinkItem, removeLinkItem, addCTO, updateCTO, removeCTO, addCable, updateCable, removeCable } = useFlowMapMutations();
+  const { addHost, removeHost, updateHost, addLink, updateLink, removeLink, addLinkItem, removeLinkItem, addCTO, updateCTO, removeCTO, addCable, updateCable, removeCable, addReserva, removeReserva } = useFlowMapMutations();
 
   const [mode, setMode] = useState<BuilderMode>("idle");
   const [pendingOrigin, setPendingOrigin] = useState<string | null>(null);
@@ -146,6 +147,9 @@ function MapEditorView({ mapId }: { mapId: string }) {
   const [editingCableId, setEditingCableId] = useState<string | null>(null);
   const [snapToStreet, setSnapToStreet] = useState(false);
   const [hideAccessNetwork, setHideAccessNetwork] = useState(false);
+  const [showViability, setShowViability] = useState(false);
+  const [viabilityPick, setViabilityPick] = useState<{ lat: number; lon: number } | null>(null);
+  const [viabilityPicking, setViabilityPicking] = useState(false);
   const isMobile = useIsMobile();
   const { muted, toggleMute, playBeep } = useAudioAlert();
 
@@ -171,14 +175,36 @@ function MapEditorView({ mapId }: { mapId: string }) {
 
   const handleMapClick = useCallback(
     (lat: number, lon: number) => {
+      if (viabilityPicking) {
+        setViabilityPick({ lat, lon });
+        setViabilityPicking(false);
+        return;
+      }
       if (mode === "place-host" && tenantId) {
         window.dispatchEvent(new CustomEvent("flowmap-place-host", { detail: { lat, lon } }));
       } else if (mode === "draw-route" && editingLinkId) {
         setRoutePoints((p) => [...p, [lon, lat]]);
       }
     },
-    [mode, tenantId, editingLinkId],
+    [mode, tenantId, editingLinkId, viabilityPicking],
   );
+
+  // CTO status aggregator polling
+  useEffect(() => {
+    if (!activeConnectionId || !data?.ctos?.length) return;
+    const poll = async () => {
+      try {
+        await supabase.functions.invoke("cto-status-aggregator", {
+          body: { map_id: mapId, connection_id: activeConnectionId },
+        });
+      } catch (e) {
+        console.warn("[CTO aggregator] error:", e);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 60_000); // every 60s
+    return () => clearInterval(interval);
+  }, [mapId, activeConnectionId, data?.ctos?.length]);
 
   const handleAddHost = useCallback(
     async (hostData: { zabbix_host_id: string; host_name: string; host_group: string; icon_type: string; is_critical: boolean; lat: number; lon: number }) => {
@@ -439,6 +465,14 @@ function MapEditorView({ mapId }: { mapId: string }) {
               <Settings2 className="w-3 h-3" />Builder
             </Button>
             <Button
+              variant={showViability ? "default" : "outline"}
+              size="sm"
+              className={`h-7 text-[10px] gap-1 ${showViability ? "bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/30" : ""}`}
+              onClick={() => { setShowViability((p) => !p); if (!showViability) { setShowBuilder(false); setShowNoc(false); } }}
+            >
+              <Search className="w-3 h-3" />Viabilidade
+            </Button>
+            <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-neon-green"
@@ -460,6 +494,7 @@ function MapEditorView({ mapId }: { mapId: string }) {
             links={displayLinks}
             ctos={data.ctos}
             cables={hideAccessNetwork ? data.cables.filter((c) => c.is_backbone) : data.cables}
+            reservas={data.reservas}
             statusMap={statusMap}
             linkStatuses={linkStatuses}
             linkEvents={linkEvents}
@@ -604,6 +639,24 @@ function MapEditorView({ mapId }: { mapId: string }) {
                 editingCableId={editingCableId}
                 snapToStreet={snapToStreet}
                 onSnapToStreetChange={setSnapToStreet}
+              />
+            </motion.div>
+          )}
+          {showViability && (
+            <motion.div
+              key="viability"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 280, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden shrink-0 border-l border-border/30 bg-card/95 backdrop-blur-xl p-3"
+            >
+              <ViabilityPanel
+                mapId={mapId}
+                tenantId={tenantId}
+                onStartPicking={() => setViabilityPicking(true)}
+                pickedPoint={viabilityPick}
+                onClearPick={() => setViabilityPick(null)}
               />
             </motion.div>
           )}
