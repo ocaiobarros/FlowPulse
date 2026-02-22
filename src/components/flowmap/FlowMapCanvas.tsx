@@ -178,6 +178,7 @@ interface Props {
   isolatedNodeIds?: string[];
   onMapClick?: (lat: number, lon: number) => void;
   onHostClick?: (hostId: string) => void;
+  onMapReady?: (map: L.Map) => void;
   focusHost?: FlowMapHost | null;
   className?: string;
 }
@@ -194,6 +195,7 @@ export default function FlowMapCanvas({
   isolatedNodeIds = [],
   onMapClick,
   onHostClick,
+  onMapReady,
   focusHost,
   className,
 }: Props) {
@@ -225,6 +227,7 @@ export default function FlowMapCanvas({
     const labels = L.layerGroup().addTo(map);
     layersRef.current = { markers, lines, labels };
     mapRef.current = map;
+    onMapReady?.(map);
 
     return () => {
       map.remove();
@@ -450,6 +453,8 @@ export default function FlowMapCanvas({
       marker.on("click", (e) => {
         L.DomEvent.stopPropagation(e);
         onHostClick?.(h.id);
+        // Dispatch for mobile FieldOverlay
+        window.dispatchEvent(new CustomEvent("field-host-tap", { detail: h.id }));
       });
 
       marker.addTo(markers);
