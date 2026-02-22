@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Map, Plus, Trash2, Eye, ArrowLeft, Zap, Settings2, Radio, Maximize, Minimize, Volume2, VolumeX } from "lucide-react";
@@ -20,6 +20,8 @@ import FlowMapCanvas from "@/components/flowmap/FlowMapCanvas";
 import MapBuilderPanel, { type BuilderMode } from "@/components/flowmap/MapBuilderPanel";
 import NocConsolePanel from "@/components/flowmap/NocConsolePanel";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
+import { useIsMobile } from "@/hooks/use-mobile";
+import FieldOverlay from "@/components/flowmap/FieldOverlay";
 
 /* ─────────── MAP LIST ─────────── */
 function MapListView() {
@@ -139,6 +141,8 @@ function MapEditorView({ mapId }: { mapId: string }) {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [focusHost, setFocusHost] = useState<FlowMapHost | null>(null);
   const [warRoom, setWarRoom] = useState(false);
+  const [leafletMap, setLeafletMap] = useState<any>(null);
+  const isMobile = useIsMobile();
   const { muted, toggleMute, playBeep } = useAudioAlert();
 
   useEffect(() => {
@@ -443,8 +447,21 @@ function MapEditorView({ mapId }: { mapId: string }) {
             isolatedNodeIds={isolatedNodes}
             onMapClick={handleMapClick}
             onHostClick={handleHostClick}
+            onMapReady={setLeafletMap}
             focusHost={focusHost}
           />
+
+          {/* Field-NOC overlay — mobile only */}
+          {isMobile && (
+            <FieldOverlay
+              mapRef={leafletMap}
+              hosts={data.hosts}
+              statusMap={statusMap}
+              linkStatuses={linkStatuses}
+              linkTraffic={linkTraffic}
+              mapId={mapId}
+            />
+          )}
 
           {/* War Room floating controls */}
           {warRoom && (
