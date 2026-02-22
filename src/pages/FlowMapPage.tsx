@@ -196,6 +196,7 @@ function MapEditorView({ mapId }: { mapId: string }) {
     onuAuthorized: number; onuUnprovisioned: number; ponLinkStatus: string; trafficIn: number | null;
     trafficOut: number | null; temperature: number | null; fanStatus: string | null;
     fanRotation: number | null; txPower: number | null; cpuLoad: number | null; uptime: number | null;
+    isMassiva?: boolean;
   }>>({});
 
   // OLT-level health data
@@ -203,6 +204,8 @@ function MapEditorView({ mapId }: { mapId: string }) {
     hostId: string; hostName: string; temperature: number | null;
     fanStatus: string | null; fanRotation: number | null; cpuLoad: number | null;
     uptime: number | null; totalOnuOnline: number; totalOnuOffline: number; totalUnprovisioned: number;
+    slotTemperatures?: Array<{ slot: string; temperature: number }>;
+    topPons?: Array<{ pon: string; trafficBps: number; hostId: string }>;
   }>>({});
 
   // CTO status aggregator polling
