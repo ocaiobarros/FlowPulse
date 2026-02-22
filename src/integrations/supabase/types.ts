@@ -1365,6 +1365,47 @@ export type Database = {
           },
         ]
       }
+      webhook_tokens: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          label: string
+          revoked_at: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          revoked_at?: string | null
+          tenant_id: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          revoked_at?: string | null
+          tenant_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       widgets: {
         Row: {
           adapter: Json
@@ -1527,6 +1568,7 @@ export type Database = {
       }
       is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
       sla_sweep_breaches: { Args: { p_tenant_id?: string }; Returns: number }
+      verify_webhook_token: { Args: { p_token: string }; Returns: string }
     }
     Enums: {
       alert_status: "open" | "ack" | "resolved"

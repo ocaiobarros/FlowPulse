@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type, x-webhook-token, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 function json(data: unknown, status = 200) {
@@ -11,6 +11,33 @@ function json(data: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/* ─── Rate Limiter (in-memory sliding window, 60 req/min per IP) ─── */
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 60;
+const ipHits = new Map<string, number[]>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const hits = ipHits.get(ip) ?? [];
+  // Prune old entries
+  const recent = hits.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX) {
+    ipHits.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  ipHits.set(ip, recent);
+  // Periodic cleanup to prevent memory leaks
+  if (ipHits.size > 500) {
+    for (const [k, v] of ipHits) {
+      const filtered = v.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+      if (filtered.length === 0) ipHits.delete(k);
+      else ipHits.set(k, filtered);
+    }
+  }
+  return false;
 }
 
 /* ─── Types ─── */
@@ -113,22 +140,78 @@ async function sendTelegram(
   }
 }
 
+/* ─── SHA-256 helper for DB token verification ─── */
+async function sha256hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /* ─── Main handler ─── */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  // ── Token authentication ──
-  const webhookToken = Deno.env.get("FLOWPULSE_WEBHOOK_TOKEN");
-  if (webhookToken) {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return json({ error: "Missing Authorization header. Use: Bearer <token>" }, 401);
+  // ── Rate limiting (60 req/min per IP) ──
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? req.headers.get("cf-connecting-ip")
+    ?? "unknown";
+  if (isRateLimited(clientIp)) {
+    return json({ error: "Rate limit exceeded. Max 60 requests per minute." }, 429);
+  }
+
+  // ── Token authentication (env var, DB token, or X-Webhook-Token header) ──
+  const authHeader = req.headers.get("Authorization");
+  const xWebhookToken = req.headers.get("X-Webhook-Token");
+  
+  // Accept token from X-Webhook-Token header (preferred) or Authorization Bearer
+  let providedToken = "";
+  if (xWebhookToken) {
+    providedToken = xWebhookToken.trim();
+  } else if (authHeader?.startsWith("Bearer ")) {
+    providedToken = authHeader.replace("Bearer ", "").trim();
+    // Skip JWT tokens (they start with eyJ) — those are user session tokens, not webhook tokens
+    if (providedToken.startsWith("eyJ")) {
+      providedToken = "";
     }
-    const providedToken = authHeader.replace("Bearer ", "").trim();
-    if (providedToken !== webhookToken) {
-      return json({ error: "Invalid token" }, 403);
+  }
+  
+  if (!providedToken) {
+    return json({ error: "Missing webhook token. Use: Authorization: Bearer <token> or X-Webhook-Token: <token>" }, 401);
+  }
+
+  // Check env var token first (legacy/global)
+  const envToken = Deno.env.get("FLOWPULSE_WEBHOOK_TOKEN");
+  let tokenValidated = false;
+  let tokenTenantId: string | null = null;
+
+  if (envToken && providedToken === envToken) {
+    tokenValidated = true;
+  }
+
+  // If env token didn't match, check DB tokens
+  if (!tokenValidated) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    if (supabaseUrl && serviceRoleKey) {
+      const tmpClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+      const tokenHash = await sha256hex(providedToken);
+      const { data: dbToken } = await tmpClient
+        .from("webhook_tokens")
+        .select("tenant_id")
+        .eq("token_hash", tokenHash)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (dbToken) {
+        tokenValidated = true;
+        tokenTenantId = dbToken.tenant_id;
+      }
     }
+  }
+
+  if (!tokenValidated) {
+    return json({ error: "Invalid token" }, 403);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

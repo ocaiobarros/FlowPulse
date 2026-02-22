@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.telemetry-wizard]
 verify_jwt = false
+
+[functions.webhook-token-manage]
+verify_jwt = false
