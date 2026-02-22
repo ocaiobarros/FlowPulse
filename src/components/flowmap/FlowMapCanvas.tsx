@@ -549,7 +549,7 @@ export default function FlowMapCanvas({
           `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:160px;">
             <div style="font-family:'Orbitron',sans-serif;font-weight:700;font-size:12px;color:#e0e0e0;margin-bottom:4px;">${cto.name || "CTO"}</div>
             <div>Status: <span style="color:${statusColor};font-weight:700;">${cto.status_calculated}</span></div>
-            <div>Capacidade: <span style="color:#00e5ff;">${cto.capacity} portas</span></div>
+            <div>Capacidade: <span style="color:#00e5ff;">${cto.occupied_ports}/${cto.capacity} portas</span></div>
             ${cto.pon_port_index ? `<div>Porta PON: <span style="color:#ff9100;">${cto.pon_port_index}</span></div>` : ""}
             ${cto.description ? `<div style="color:#888;font-size:10px;margin-top:4px;">${cto.description}</div>` : ""}
           </div>`,

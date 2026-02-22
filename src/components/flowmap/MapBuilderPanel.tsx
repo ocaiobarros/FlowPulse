@@ -209,6 +209,7 @@ export default function MapBuilderPanel({
         lat,
         lon,
         capacity: ctoForm.capacity,
+        occupied_ports: 0,
         metadata: {},
         zabbix_host_ids: [],
       });
