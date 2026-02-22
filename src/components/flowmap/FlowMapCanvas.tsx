@@ -171,12 +171,15 @@ export interface CTOTelemetryData {
   onuAuthorized: number; onuUnprovisioned: number; ponLinkStatus: string; trafficIn: number | null;
   trafficOut: number | null; temperature: number | null; fanStatus: string | null;
   fanRotation: number | null; txPower: number | null; cpuLoad: number | null; uptime: number | null;
+  isMassiva?: boolean;
 }
 
 export interface OLTHealthData {
   hostId: string; hostName: string; temperature: number | null;
   fanStatus: string | null; fanRotation: number | null; cpuLoad: number | null;
   uptime: number | null; totalOnuOnline: number; totalOnuOffline: number; totalUnprovisioned: number;
+  slotTemperatures?: Array<{ slot: string; temperature: number }>;
+  topPons?: Array<{ pon: string; trafficBps: number; hostId: string }>;
 }
 
 interface Props {
@@ -619,15 +622,17 @@ export default function FlowMapCanvas({
           : "#9e9e9e";
 
         const healthPct = tel ? `${tel.healthRatio}%` : null;
+        const isMassiva = tel?.isMassiva === true;
 
         const icon = L.divIcon({
           className: "",
           iconSize: [28, 28],
           iconAnchor: [14, 14],
-          html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;">
+          html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;position:relative;">
             <div style="width:18px;height:18px;border-radius:3px;background:${statusColor};box-shadow:0 0 10px ${statusColor}80;border:2px solid #0a0b10;display:flex;align-items:center;justify-content:center;">
               <span style="font-size:8px;font-weight:900;color:#0a0b10;">C</span>
             </div>
+            ${isMassiva ? `<div style="position:absolute;top:-8px;right:-6px;font-size:14px;animation:fmPulse 0.8s ease-in-out infinite;filter:drop-shadow(0 0 4px #ff174480);">⚡</div>` : ""}
           </div>`,
         });
 
