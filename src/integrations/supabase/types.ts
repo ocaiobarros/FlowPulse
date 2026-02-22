@@ -1709,6 +1709,7 @@ export type Database = {
         Returns: string
       }
       is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
+      jwt_tenant_id: { Args: never; Returns: string }
       sla_sweep_breaches: { Args: { p_tenant_id?: string }; Returns: number }
       verify_webhook_token: { Args: { p_token: string }; Returns: string }
     }
