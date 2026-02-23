@@ -326,7 +326,7 @@ export default function DashboardBuilder() {
       {/* ── Top Bar ── */}
       <header className="h-12 border-b border-border/30 flex items-center justify-between px-4 flex-shrink-0 glass-card-elevated z-20">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/app/operations/home")} className="h-8 w-8">
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="h-5 w-px bg-border/50" />

@@ -62,6 +62,13 @@ const App = () => (
                       <Route path="engineering/viability" element={<StubPage />} />
                       <Route path="engineering/capacity" element={<StubPage />} />
 
+                      {/* Monitoring */}
+                      <Route path="monitoring/server" element={<Index />} />
+                      <Route path="monitoring/virtualization" element={<VirtualizationMonitor />} />
+                      <Route path="monitoring/virtual-machines" element={<VirtualMachinesMonitor />} />
+                      <Route path="monitoring/bgp" element={<BgpFlowMonitor />} />
+                      <Route path="monitoring/fleet" element={<FleetIntelligence />} />
+
                       {/* Governance */}
                       <Route path="governance/sla" element={<StubPage />} />
                       <Route path="governance/timeline" element={<StubPage />} />
@@ -105,22 +112,12 @@ const App = () => (
             <Route path="/settings/rms-connections" element={<Navigate to="/app/settings/rms-connections" replace />} />
             <Route path="/admin" element={<Navigate to="/app/settings/users" replace />} />
 
-            {/* ── Template routes (kept as-is, no sidebar) ── */}
-            <Route path="/templates/server-monitor" element={
-              <ProtectedRoute><Index /></ProtectedRoute>
-            } />
-            <Route path="/templates/fleet-intelligence" element={
-              <ProtectedRoute><FleetIntelligence /></ProtectedRoute>
-            } />
-            <Route path="/templates/virtualization-monitor" element={
-              <ProtectedRoute><VirtualizationMonitor /></ProtectedRoute>
-            } />
-            <Route path="/templates/virtualmachines-monitor" element={
-              <ProtectedRoute><VirtualMachinesMonitor /></ProtectedRoute>
-            } />
-            <Route path="/Flow/bgp-asn-flow-monitor" element={
-              <ProtectedRoute><BgpFlowMonitor /></ProtectedRoute>
-            } />
+            {/* ── Legacy template redirects ── */}
+            <Route path="/templates/server-monitor" element={<Navigate to="/app/monitoring/server" replace />} />
+            <Route path="/templates/fleet-intelligence" element={<Navigate to="/app/monitoring/fleet" replace />} />
+            <Route path="/templates/virtualization-monitor" element={<Navigate to="/app/monitoring/virtualization" replace />} />
+            <Route path="/templates/virtualmachines-monitor" element={<Navigate to="/app/monitoring/virtual-machines" replace />} />
+            <Route path="/Flow/bgp-asn-flow-monitor" element={<Navigate to="/app/monitoring/bgp" replace />} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>

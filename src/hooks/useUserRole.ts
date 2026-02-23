@@ -7,10 +7,10 @@ export type AppRole = "admin" | "editor" | "viewer" | "tech" | "sales";
 /** Map of role → allowed route prefixes */
 const ROLE_ROUTE_ACCESS: Record<AppRole, string[]> = {
   admin: ["*"], // full access
-  editor: ["/", "/dashboard", "/builder", "/flowmap", "/settings", "/templates", "/Flow"],
-  tech: ["/", "/dashboard", "/flowmap", "/templates"],
-  sales: ["/", "/dashboard", "/flowmap"],
-  viewer: ["/", "/dashboard", "/flowmap"],
+  editor: ["/", "/app", "/dashboard", "/builder"],
+  tech: ["/", "/app", "/dashboard"],
+  sales: ["/", "/app", "/dashboard"],
+  viewer: ["/", "/app", "/dashboard"],
 };
 
 /** Which roles can use editing features on the flowmap */

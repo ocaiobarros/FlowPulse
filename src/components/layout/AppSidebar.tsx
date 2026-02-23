@@ -2,6 +2,7 @@ import { useLocation } from "react-router-dom";
 import {
   Home, Map, AlertTriangle, Wrench, Search, BarChart3,
   FileText, Clock, Settings, Users, Building2, Zap, ChevronRight,
+  Server, Box, MonitorCheck, Fuel, Globe,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -28,6 +29,14 @@ const engineeringItems = [
   { title: "Inventário", url: "/app/engineering/inventory", icon: Wrench },
   { title: "Viabilidade", url: "/app/engineering/viability", icon: Search },
   { title: "Capacidade", url: "/app/engineering/capacity", icon: BarChart3 },
+];
+
+const monitoringItems = [
+  { title: "Server Monitor", url: "/app/monitoring/server", icon: Server },
+  { title: "Virtualização", url: "/app/monitoring/virtualization", icon: Box },
+  { title: "Máquinas Virtuais", url: "/app/monitoring/virtual-machines", icon: MonitorCheck },
+  { title: "BGP Flow", url: "/app/monitoring/bgp", icon: Globe },
+  { title: "Fleet Intelligence", url: "/app/monitoring/fleet", icon: Fuel },
 ];
 
 const governanceItems = [
@@ -98,6 +107,7 @@ export function AppSidebar() {
 
       <SidebarContent className="py-2">
         <NavGroup label="Operações" items={operationsItems} collapsed={collapsed} />
+        <NavGroup label="Monitoramento" items={monitoringItems} collapsed={collapsed} />
         <NavGroup label="Engenharia" items={engineeringItems} collapsed={collapsed} />
         <NavGroup label="Governança" items={governanceItems} collapsed={collapsed} />
         <RoleGate allowed={["admin"]}>

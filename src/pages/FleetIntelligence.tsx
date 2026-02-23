@@ -181,7 +181,7 @@ export default function FleetIntelligence() {
         <div className="max-w-[1600px] mx-auto px-6 py-4">
           <div className="flex items-center gap-4 mb-4">
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/app/operations/home")}
               className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
             >
               <ChevronLeft className="w-5 h-5 text-muted-foreground" />
@@ -267,7 +267,7 @@ export default function FleetIntelligence() {
               Configure as credenciais do RMS no Admin Hub para alimentar os dados de abastecimento e eficiência.
             </p>
             <button
-              onClick={() => navigate("/admin")}
+              onClick={() => navigate("/app/settings/rms-connections")}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               style={{ background: "hsl(43 100% 50% / 0.15)", color: "hsl(43 100% 50%)", border: "1px solid hsl(43 100% 50% / 0.3)" }}
             >
