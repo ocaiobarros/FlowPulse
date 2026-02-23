@@ -8,6 +8,7 @@ export default function BgpFlowList() {
       title="BGP Flow"
       description="Painéis de monitoramento BGP e ASN"
       icon={<Globe className="w-6 h-6 text-neon-green" />}
+      createPath="/app/monitoring/bgp/new"
     />
   );
 }
