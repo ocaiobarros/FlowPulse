@@ -14,6 +14,7 @@ import {
   ShieldCheck, AlertTriangle, TrendingDown, Clock, RefreshCw, FileDown,
   CheckCircle, XCircle, Activity, BarChart3, Filter, X,
 } from "lucide-react";
+import { exportSLAPdf } from "@/lib/pdf-export";
 import { motion } from "framer-motion";
 import { format, subDays, startOfMonth, endOfMonth, subMonths, differenceInSeconds } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -260,7 +261,22 @@ export default function SLAGovernance() {
             <Button size="sm" variant="outline" className="h-7 gap-1 text-[10px]" onClick={() => refetch()}>
               <RefreshCw className="w-3 h-3" /> Atualizar
             </Button>
-            <Button size="sm" variant="outline" className="h-7 gap-1 text-[10px] opacity-50 cursor-not-allowed" disabled>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-[10px]"
+              disabled={isLoading}
+              onClick={() => {
+                if (!filteredAlerts || !metrics) return;
+                exportSLAPdf({
+                  metrics,
+                  policies: (policies ?? []) as any,
+                  alerts: filteredAlerts as any,
+                  period,
+                  filters: { group: selectedGroup || undefined, host: selectedHost || undefined },
+                });
+              }}
+            >
               <FileDown className="w-3 h-3" /> Exportar PDF
             </Button>
           </div>

@@ -347,8 +347,9 @@ export default function ViabilityPage() {
                         value={cep}
                         onChange={(e) => handleCepChange(e.target.value)}
                         placeholder="00000-000"
-                        className="h-8 text-xs font-mono pr-8"
+                        className="h-10 sm:h-8 text-sm sm:text-xs font-mono pr-8"
                         maxLength={9}
+                        inputMode="numeric"
                       />
                       {cepLoading && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
                       {cepFound && !cepLoading && <CheckCircle className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-emerald-400" />}
@@ -384,16 +385,17 @@ export default function ViabilityPage() {
                               value={numero}
                               onChange={(e) => setNumero(e.target.value)}
                               placeholder="Ex: 1234"
-                              className="h-8 text-xs font-mono flex-1"
+                              className="h-10 sm:h-8 text-sm sm:text-xs font-mono flex-1"
+                              inputMode="numeric"
                             />
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 text-xs gap-1"
+                              className="h-10 sm:h-8 text-sm sm:text-xs gap-1 min-w-[44px]"
                               disabled={!numero.trim() || geocoding}
                               onClick={handleGeocode}
                             >
-                              {geocoding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                              {geocoding ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                               Localizar
                             </Button>
                           </div>
@@ -419,11 +421,11 @@ export default function ViabilityPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[10px] font-display uppercase text-muted-foreground">Latitude</Label>
-                      <Input type="number" step="any" placeholder="-20.46300" value={lat} onChange={(e) => setLat(e.target.value)} className="h-8 text-xs font-mono" />
+                      <Input type="number" step="any" placeholder="-20.46300" value={lat} onChange={(e) => setLat(e.target.value)} className="h-10 sm:h-8 text-sm sm:text-xs font-mono" inputMode="decimal" />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[10px] font-display uppercase text-muted-foreground">Longitude</Label>
-                      <Input type="number" step="any" placeholder="-54.61900" value={lon} onChange={(e) => setLon(e.target.value)} className="h-8 text-xs font-mono" />
+                      <Input type="number" step="any" placeholder="-54.61900" value={lon} onChange={(e) => setLon(e.target.value)} className="h-10 sm:h-8 text-sm sm:text-xs font-mono" inputMode="decimal" />
                     </div>
                   </div>
                 </TabsContent>
@@ -432,11 +434,11 @@ export default function ViabilityPage() {
               <Separator />
 
               <Button
-                className="w-full gap-2 h-9 text-xs"
+                className="w-full gap-2 h-12 sm:h-9 text-sm sm:text-xs font-semibold"
                 onClick={handleSearch}
                 disabled={!canSearch || loading}
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                 Consultar Viabilidade
               </Button>
             </CardContent>
@@ -483,7 +485,7 @@ export default function ViabilityPage() {
                             </div>
                             <span className={`text-xs font-bold ${statusColor(r.status_calculated)}`}>{r.status_calculated}</span>
                           </div>
-                          <div className="grid grid-cols-4 gap-3">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <DetailItem label="Distância" value={`${r.distance_m.toFixed(0)}m`} color="text-primary" icon={<MapPin className="w-3 h-3" />} />
                             <DetailItem label="Capacidade" value={r.capacity} color="text-foreground" icon={<Cable className="w-3 h-3" />} />
                             <DetailItem label="Portas Livres" value={`${r.free_ports}/${r.capacity}`} color={r.free_ports > 0 ? "text-emerald-400" : "text-red-400"} icon={<Wifi className="w-3 h-3" />} />
