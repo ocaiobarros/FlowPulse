@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Activity, Server, Database, Power, Loader2, Settings2, Wifi, Cpu as CpuIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Activity, Server, Database, Power, Loader2, Settings2, Wifi, Cpu as CpuIcon, ArrowLeft, Save } from 'lucide-react';
 import { parsePowerState, parseSnmpAvailability } from '@/data/serverData';
 import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import StatusCard from '@/components/dashboard/StatusCard';
@@ -28,6 +29,7 @@ import {
 } from '@/hooks/useIdracLive';
 
 const Index = () => {
+  const navigate = useNavigate();
   const [config, setConfig] = useState<IdracConfig | null>(loadIdracConfig);
   const [showSetup, setShowSetup] = useState(!config);
   const { data, dataLoading, lastRefresh, refresh, error, fetchItems } = useIdracLive();
@@ -97,14 +99,23 @@ const Index = () => {
           isLoading={dataLoading}
         />
 
-        <div className="flex justify-end mb-2 -mt-4">
+        <div className="flex justify-between items-center mb-2 -mt-4">
           <button
-            onClick={handleReconfigure}
+            onClick={() => navigate(-1)}
             className="flex items-center gap-1 text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           >
-            <Settings2 className="w-3 h-3" />
-            Reconfigurar
+            <ArrowLeft className="w-3 h-3" />
+            Voltar
           </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleReconfigure}
+              className="flex items-center gap-1 text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            >
+              <Settings2 className="w-3 h-3" />
+              Reconfigurar
+            </button>
+          </div>
         </div>
 
         {dataLoading && !data && (

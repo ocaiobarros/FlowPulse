@@ -8,6 +8,7 @@ export default function VirtualizationList() {
       title="Virtualização"
       description="Painéis de monitoramento de virtualização"
       icon={<Box className="w-6 h-6 text-neon-green" />}
+      createPath="/app/monitoring/virtualization/new"
     />
   );
 }
