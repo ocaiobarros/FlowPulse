@@ -219,8 +219,8 @@ export default function InventoryPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6 h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* Header — mobile-friendly */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-display font-bold text-foreground flex items-center gap-2">
             <Package className="w-5 h-5 text-primary" />
@@ -228,18 +228,18 @@ export default function InventoryPage() {
           </h1>
           <p className="text-xs text-muted-foreground mt-1">Gestão consolidada de Hosts, CTOs e Cabos da sua rede</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setKmlMode("import")} className="gap-1.5">
-            <Upload className="w-3.5 h-3.5" /> Importar KML
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setKmlMode("import")} className="gap-1.5 h-10 sm:h-8 min-w-[44px] text-xs">
+            <Upload className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Importar KML</span><span className="sm:hidden">KML</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setKmlMode("export")} className="gap-1.5">
-            <Globe className="w-3.5 h-3.5" /> Exportar KML
+          <Button variant="outline" size="sm" onClick={() => setKmlMode("export")} className="gap-1.5 h-10 sm:h-8 min-w-[44px] text-xs">
+            <Globe className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Exportar KML</span><span className="sm:hidden">Exp</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5">
-            <Download className="w-3.5 h-3.5" /> Exportar CSV
+          <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5 h-10 sm:h-8 min-w-[44px] text-xs">
+            <Download className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Exportar CSV</span><span className="sm:hidden">CSV</span>
           </Button>
-          <Button size="sm" onClick={() => setAddDialogOpen(true)} className="gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Adicionar
+          <Button size="sm" onClick={() => setAddDialogOpen(true)} className="gap-1.5 h-10 sm:h-8 min-w-[44px]">
+            <Plus className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Adicionar</span>
           </Button>
         </div>
       </div>
@@ -252,11 +252,11 @@ export default function InventoryPage() {
         <ScoreCard icon={<AlertTriangle className="w-4 h-4" />} label="Links" value={links.length} sub={`${links.filter((l: any) => l.current_status === "DOWN").length} down`} color="text-amber-400" />
       </div>
 
-      {/* Filters bar */}
+      {/* Filters bar — touch-friendly */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar ativos..." className="pl-8 h-8 text-xs" />
+        <div className="relative flex-1 min-w-[160px] max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-3.5 sm:h-3.5 text-muted-foreground" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar ativos..." className="pl-8 h-10 sm:h-8 text-sm sm:text-xs" />
         </div>
         {maps && maps.length > 1 && (
           <Select value={selectedMapId} onValueChange={setSelectedMapId}>

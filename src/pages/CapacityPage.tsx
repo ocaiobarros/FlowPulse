@@ -213,35 +213,43 @@ export default function CapacityPage() {
             </div>
           </div>
 
-          {/* KPI Cards */}
+          {/* KPI Cards with Gauge Circles */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard
+            <GaugeKpiCard
               icon={<HardDrive className="w-4 h-4" />}
               label="Portas Totais"
               value={totalPorts}
               sub={`${occupiedPorts} ocupadas`}
+              pct={globalPct}
               color="text-primary"
+              arcColor="hsl(var(--primary))"
             />
-            <KpiCard
+            <GaugeKpiCard
               icon={<Gauge className="w-4 h-4" />}
               label="Ocupação Global"
               value={`${globalPct}%`}
-              progress={globalPct}
+              sub={`${occupiedPorts} / ${totalPorts}`}
+              pct={globalPct}
               color={occupancyColor(globalPct)}
+              arcColor={barColor(globalPct)}
             />
-            <KpiCard
+            <GaugeKpiCard
               icon={<AlertTriangle className="w-4 h-4" />}
               label="Caixas Esgotadas"
               value={exhaustedCount}
               sub="100% ocupação"
+              pct={filtered.length > 0 ? Math.round((exhaustedCount / filtered.length) * 100) : 0}
               color={exhaustedCount > 0 ? "text-red-400" : "text-emerald-400"}
+              arcColor={exhaustedCount > 0 ? "#f87171" : "#34d399"}
             />
-            <KpiCard
+            <GaugeKpiCard
               icon={<TrendingUp className="w-4 h-4" />}
               label="Novas CTOs (30d)"
               value={recentCtos}
               sub="Ativações recentes"
+              pct={Math.min(100, recentCtos * 10)}
               color="text-sky-400"
+              arcColor="#38bdf8"
             />
           </div>
 
@@ -409,40 +417,58 @@ export default function CapacityPage() {
   );
 }
 
-/* ── KPI Card ── */
-function KpiCard({
+/* ── Gauge KPI Card with SVG circle ── */
+function GaugeKpiCard({
   icon,
   label,
   value,
   sub,
   color,
-  progress,
+  pct,
+  arcColor,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   sub?: string;
   color: string;
-  progress?: number;
+  pct: number;
+  arcColor: string;
 }) {
+  const R = 28;
+  const STROKE = 4;
+  const C = Math.PI * 2 * R;
+  const offset = C - (Math.min(100, Math.max(0, pct)) / 100) * C;
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-      <Card className="border-border/50">
-        <CardContent className="p-3 flex flex-col gap-1.5">
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            {icon}
-            <span className="text-[9px] font-display uppercase tracking-wider">{label}</span>
-          </div>
-          <span className={`text-xl font-bold font-mono ${color}`}>{value}</span>
-          {progress !== undefined && (
-            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${progress}%`, background: barColor(progress) }}
+      <Card className="glass-card border-border/50 backdrop-blur-sm">
+        <CardContent className="p-3 flex items-center gap-3">
+          <div className="relative w-16 h-16 shrink-0">
+            <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
+              <circle cx="32" cy="32" r={R} fill="none" stroke="hsl(var(--muted) / 0.3)" strokeWidth={STROKE} />
+              <circle
+                cx="32" cy="32" r={R} fill="none"
+                stroke={arcColor}
+                strokeWidth={STROKE}
+                strokeLinecap="round"
+                strokeDasharray={C}
+                strokeDashoffset={offset}
+                style={{ transition: "stroke-dashoffset 0.8s ease", filter: `drop-shadow(0 0 4px ${arcColor}66)` }}
               />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className={`text-[11px] font-bold font-mono ${color}`}>{pct}%</span>
             </div>
-          )}
-          {sub && <span className="text-[10px] text-muted-foreground">{sub}</span>}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
+              {icon}
+              <span className="text-[9px] font-display uppercase tracking-wider">{label}</span>
+            </div>
+            <span className={`text-lg font-bold font-mono ${color}`}>{value}</span>
+            {sub && <p className="text-[10px] text-muted-foreground truncate">{sub}</p>}
+          </div>
         </CardContent>
       </Card>
     </motion.div>
