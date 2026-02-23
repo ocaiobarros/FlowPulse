@@ -727,10 +727,10 @@ export default function MapBuilderPanel({
                   </div>
                   <div>
                     <label className="text-[8px] text-muted-foreground">OLT (Host Pai)</label>
-                    <Select value={ctoOltId || ""} onValueChange={(v) => setCtoOltId(v || null)}>
+                    <Select value={ctoOltId || "__none__"} onValueChange={(v) => setCtoOltId(v === "__none__" ? null : v)}>
                       <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="" className="text-xs">Nenhuma</SelectItem>
+                        <SelectItem value="__none__" className="text-xs">Nenhuma</SelectItem>
                         {hosts.map((h) => (
                           <SelectItem key={h.id} value={h.id} className="text-xs">{h.host_name || h.zabbix_host_id}</SelectItem>
                         ))}
