@@ -147,7 +147,7 @@ export default function DashboardView() {
             <p className="text-sm text-muted-foreground mb-4">
               Crie seu primeiro dashboard para visualizar dados do Zabbix em tempo real.
             </p>
-            <Button onClick={() => navigate("/settings/connections")} variant="outline" className="gap-2">
+            <Button onClick={() => navigate("/app/settings/connections")} variant="outline" className="gap-2">
               <Settings className="w-4 h-4" />
               Configurar Conexões
             </Button>
@@ -208,7 +208,7 @@ export default function DashboardView() {
           className="flex items-center justify-between mb-6"
         >
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/app/operations/home")} className="text-muted-foreground hover:text-foreground">
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div>
