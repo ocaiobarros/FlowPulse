@@ -12,6 +12,9 @@ import { Icon } from "@iconify/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useDashboardPersist } from "@/hooks/useDashboardPersist";
 import NetworkSummaryPanel, { type NetworkSummaryData } from "@/components/bgp/NetworkSummaryPanel";
+import PeeringWall from "@/components/bgp/PeeringWall";
+import FlapHistory, { generateMockFlaps } from "@/components/bgp/FlapHistory";
+import GeoBgpMap from "@/components/bgp/GeoBgpMap";
 
 /* ─── Config persistence ── */
 
@@ -803,7 +806,7 @@ function BgpDashboard({ config, onReconfigure, onSave, saving }: { config: BgpCo
   const hw = HARDWARE_CATALOG.find(h => h.id === config.model);
   const configId = `${config.host}:${config.port}`;
   const { stats, peers, flow_data, network_summary, timestamp, connected, refresh } = useBgpRealtime(configId);
-  const [viewMode, setViewMode] = useState<"bgp" | "flow" | "resumo">("bgp");
+  const [viewMode, setViewMode] = useState<"peering" | "bgp" | "flow" | "resumo" | "flaps" | "geo">("peering");
   const [asnFilter, setAsnFilter] = useState<"all" | "top10" | "latency" | "cost">("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -843,19 +846,29 @@ function BgpDashboard({ config, onReconfigure, onSave, saving }: { config: BgpCo
 
         <div className="flex items-center gap-3">
           <div className="flex rounded-lg border border-muted/20 overflow-hidden">
-            {(["bgp", "flow", "resumo"] as const).map(mode => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={`px-3 py-1.5 text-[10px] font-mono uppercase transition-all ${
-                  viewMode === mode
-                    ? "bg-cyan-500/15 text-cyan-400 border-cyan-400/20"
-                    : "text-muted-foreground/50 hover:text-muted-foreground/80"
-                }`}
-              >
-                {mode === "bgp" ? "Visão BGP" : mode === "flow" ? "Visão Flow" : "Resumo Rede"}
-              </button>
-            ))}
+            {(["peering", "bgp", "flow", "flaps", "geo", "resumo"] as const).map(mode => {
+              const labels: Record<string, string> = {
+                peering: "Peering Wall",
+                bgp: "Visão BGP",
+                flow: "Visão Flow",
+                flaps: "Estabilidade",
+                geo: "Geo-BGP",
+                resumo: "Resumo Rede",
+              };
+              return (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`px-3 py-1.5 text-[10px] font-mono uppercase transition-all ${
+                    viewMode === mode
+                      ? "bg-cyan-500/15 text-cyan-400 border-cyan-400/20"
+                      : "text-muted-foreground/50 hover:text-muted-foreground/80"
+                  }`}
+                >
+                  {labels[mode]}
+                </button>
+              );
+            })}
           </div>
 
           <button
@@ -890,6 +903,12 @@ function BgpDashboard({ config, onReconfigure, onSave, saving }: { config: BgpCo
       {/* Main content */}
       {viewMode === "resumo" ? (
         <NetworkSummaryPanel data={network_summary} />
+      ) : viewMode === "peering" ? (
+        <PeeringWall peers={peers} />
+      ) : viewMode === "flaps" ? (
+        <FlapHistory data={generateMockFlaps(peers)} />
+      ) : viewMode === "geo" ? (
+        <GeoBgpMap peers={peers} coreLocation={{ lat: -20.46, lon: -54.62, name: config.host || "Core ISP" }} />
       ) : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
