@@ -3,6 +3,7 @@ import {
   Map, AlertTriangle, Wrench, Search, BarChart3,
   FileText, Clock, Settings, Users, Building2, Zap, ChevronRight,
   Server, Box, MonitorCheck, Fuel, Globe, LayoutDashboard,
+  RefreshCw, Send,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -49,8 +50,13 @@ const governanceItems = [
 const settingsItems = [
   { title: "Conectores Zabbix", url: "/app/settings/connections", icon: Settings },
   { title: "Conectores RMS", url: "/app/settings/rms-connections", icon: Zap },
+  { title: "Telegram", url: "/app/settings/telegram", icon: Send },
   { title: "Usuários", url: "/app/settings/users", icon: Users },
   { title: "Tenants", url: "/app/settings/tenants", icon: Building2 },
+];
+
+const systemItems = [
+  { title: "Atualizações", url: "/app/system/updates", icon: RefreshCw },
 ];
 
 interface NavGroupProps {
@@ -114,6 +120,7 @@ export function AppSidebar() {
         <NavGroup label="Governança" items={governanceItems} collapsed={collapsed} />
         <RoleGate allowed={["admin"]}>
           <NavGroup label="Configurações" items={settingsItems} collapsed={collapsed} />
+          <NavGroup label="Sistema" items={systemItems} collapsed={collapsed} />
         </RoleGate>
       </SidebarContent>
     </Sidebar>

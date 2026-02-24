@@ -32,6 +32,8 @@ import TimelinePage from "./pages/TimelinePage";
 import TenantsPage from "./pages/TenantsPage";
 import SLAGovernance from "./pages/SLAGovernance";
 import ViabilityPage from "./pages/ViabilityPage";
+import SystemUpdates from "./pages/SystemUpdates";
+import TelegramSettings from "./pages/TelegramSettings";
 import IncidentsPage from "./pages/IncidentsPage";
 import ServerMonitorList from "./pages/monitoring/ServerMonitorList";
 import VirtualizationList from "./pages/monitoring/VirtualizationList";
@@ -113,6 +115,14 @@ const App = () => (
                         <ProtectedRoute roles={["admin"]}><TenantsPage /></ProtectedRoute>
                       } />
                       <Route path="settings/profile" element={<UserSettings />} />
+                      <Route path="settings/telegram" element={
+                        <ProtectedRoute roles={["admin"]}><TelegramSettings /></ProtectedRoute>
+                      } />
+
+                      {/* System */}
+                      <Route path="system/updates" element={
+                        <ProtectedRoute roles={["admin"]}><SystemUpdates /></ProtectedRoute>
+                      } />
 
                       <Route path="*" element={<NotFound />} />
                     </Routes>
