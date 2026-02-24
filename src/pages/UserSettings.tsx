@@ -31,6 +31,17 @@ const LANGUAGES = [
   { value: "es", label: "Español", flag: "🇪🇸" },
 ];
 
+const ALLOWED_AVATAR_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+function extractAvatarStoragePath(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const cleanUrl = url.split("?")[0];
+  const marker = "/storage/v1/object/public/dashboard-assets/";
+  const markerIndex = cleanUrl.indexOf(marker);
+  if (markerIndex === -1) return null;
+  return cleanUrl.slice(markerIndex + marker.length);
+}
+
 export default function UserSettings() {
   const { user } = useAuth();
   const { profile, refresh: refreshProfile } = useProfile();
@@ -72,60 +83,149 @@ export default function UserSettings() {
   const handleAvatarUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+
     setAvatarLoading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `avatars/${user.id}.${ext}`;
-
-      // Remove old file variants (jpg/png/webp)
-      const { data: existingFiles } = await supabase.storage.from("dashboard-assets").list("avatars", {
-        search: user.id,
-      });
-      if (existingFiles?.length) {
-        await supabase.storage.from("dashboard-assets").remove(
-          existingFiles.map(f => `avatars/${f.name}`)
-        );
+      if (!ALLOWED_AVATAR_MIME.includes(file.type)) {
+        console.error("[avatar] MIME não permitido", { type: file.type, size: file.size, name: file.name });
+        toast.error("Formato inválido. Use JPEG, PNG ou WEBP");
+        return;
       }
 
-      const { error } = await supabase.storage.from("dashboard-assets").upload(path, file, { upsert: true });
-      if (error) { toast.error("Erro ao enviar avatar"); return; }
+      const oldAvatarPath = extractAvatarStoragePath(avatarUrl || profile?.avatar_url);
+      const extFromMime = file.type === "image/jpeg" || file.type === "image/jpg"
+        ? "jpg"
+        : file.type === "image/png"
+          ? "png"
+          : "webp";
+      const newPath = `avatars/${user.id}_${Date.now()}.${extFromMime}`;
 
-      const { data: pub } = supabase.storage.from("dashboard-assets").getPublicUrl(path);
-      const url = pub.publicUrl + `?t=${Date.now()}`;
-      setAvatarUrl(url);
+      const { data: existingFiles, error: listError } = await supabase.storage
+        .from("dashboard-assets")
+        .list("avatars", { search: user.id });
+
+      if (listError) {
+        console.error("[avatar] erro ao listar arquivos antigos", listError);
+      }
+
+      const pathsToDelete = new Set<string>();
+      if (oldAvatarPath?.startsWith("avatars/")) {
+        pathsToDelete.add(oldAvatarPath);
+      }
+      existingFiles?.forEach((f) => {
+        if (f.name.startsWith(`${user.id}_`) || f.name.startsWith(`${user.id}.`)) {
+          pathsToDelete.add(`avatars/${f.name}`);
+        }
+      });
+
+      if (pathsToDelete.size > 0) {
+        const { error: removeError } = await supabase.storage
+          .from("dashboard-assets")
+          .remove(Array.from(pathsToDelete));
+
+        if (removeError) {
+          console.error("[avatar] erro ao remover avatar antigo", removeError);
+          throw removeError;
+        }
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from("dashboard-assets")
+        .upload(newPath, file, {
+          upsert: false,
+          cacheControl: "0",
+          contentType: file.type,
+        });
+
+      if (uploadError) {
+        console.error("[avatar] erro no upload", uploadError);
+        throw uploadError;
+      }
+
+      const { data: pub } = supabase.storage.from("dashboard-assets").getPublicUrl(newPath);
+      const nextAvatarUrl = `${pub.publicUrl}?t=${Date.now()}`;
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: nextAvatarUrl })
+        .eq("id", user.id);
+
+      if (profileError) {
+        console.error("[avatar] erro ao atualizar profiles.avatar_url", profileError);
+        throw profileError;
+      }
+
+      setAvatarUrl(nextAvatarUrl);
       setAvatarZoom(1);
-      await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id);
       await refreshProfile();
       toast.success("Avatar atualizado");
+    } catch (err) {
+      console.error("[avatar] falha no fluxo de substituição", err);
+      toast.error("Falha ao trocar avatar. Veja o console para detalhes.");
+      setAvatarZoom(1);
     } finally {
       setAvatarLoading(false);
-      // Reset input so re-selecting same file triggers change
       if (fileRef.current) fileRef.current.value = "";
     }
-  }, [user, refreshProfile]);
+  }, [user, avatarUrl, profile?.avatar_url, refreshProfile]);
 
   const handleResetAvatar = useCallback(async () => {
     if (!user) return;
+
     setAvatarLoading(true);
     try {
-      // Remove from storage
-      const { data: existingFiles } = await supabase.storage.from("dashboard-assets").list("avatars", {
-        search: user.id,
-      });
-      if (existingFiles?.length) {
-        await supabase.storage.from("dashboard-assets").remove(
-          existingFiles.map(f => `avatars/${f.name}`)
-        );
+      const oldAvatarPath = extractAvatarStoragePath(avatarUrl || profile?.avatar_url);
+      const { data: existingFiles, error: listError } = await supabase.storage
+        .from("dashboard-assets")
+        .list("avatars", { search: user.id });
+
+      if (listError) {
+        console.error("[avatar] erro ao listar para remoção", listError);
       }
+
+      const pathsToDelete = new Set<string>();
+      if (oldAvatarPath?.startsWith("avatars/")) {
+        pathsToDelete.add(oldAvatarPath);
+      }
+      existingFiles?.forEach((f) => {
+        if (f.name.startsWith(`${user.id}_`) || f.name.startsWith(`${user.id}.`)) {
+          pathsToDelete.add(`avatars/${f.name}`);
+        }
+      });
+
+      if (pathsToDelete.size > 0) {
+        const { error: removeError } = await supabase.storage
+          .from("dashboard-assets")
+          .remove(Array.from(pathsToDelete));
+
+        if (removeError) {
+          console.error("[avatar] erro ao remover do storage", removeError);
+          throw removeError;
+        }
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: null })
+        .eq("id", user.id);
+
+      if (profileError) {
+        console.error("[avatar] erro ao limpar profiles.avatar_url", profileError);
+        throw profileError;
+      }
+
       setAvatarUrl(null);
       setAvatarZoom(1);
-      await supabase.from("profiles").update({ avatar_url: null }).eq("id", user.id);
       await refreshProfile();
       toast.success("Avatar removido");
+    } catch (err) {
+      console.error("[avatar] falha ao remover avatar", err);
+      toast.error("Falha ao remover avatar. Veja o console para detalhes.");
     } finally {
       setAvatarLoading(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
-  }, [user, refreshProfile]);
+  }, [user, avatarUrl, profile?.avatar_url, refreshProfile]);
 
   // Save profile
   const handleSave = useCallback(async () => {
