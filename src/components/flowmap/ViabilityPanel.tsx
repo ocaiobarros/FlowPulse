@@ -3,6 +3,7 @@ import { MapPin, Search, Loader2, X, CheckCircle, AlertTriangle } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 interface ViabilityResult {
   cto_id: string;
@@ -29,6 +30,7 @@ export default function ViabilityPanel({ mapId, tenantId, onStartPicking, picked
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const handleSearch = useCallback(async () => {
     if (!pickedPoint || !tenantId) return;
@@ -44,7 +46,7 @@ export default function ViabilityPanel({ mapId, tenantId, onStartPicking, picked
       if (error) throw error;
       setResults((data as unknown as ViabilityResult[]) ?? []);
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Erro na consulta", description: e.message });
+      toast({ variant: "destructive", title: t("viability.queryError"), description: e.message });
       setResults([]);
     } finally {
       setLoading(false);
@@ -58,11 +60,11 @@ export default function ViabilityPanel({ mapId, tenantId, onStartPicking, picked
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <MapPin className="w-4 h-4 text-neon-cyan" />
-        <span className="text-xs font-display font-bold text-foreground">Viabilidade FTTH</span>
+        <span className="text-xs font-display font-bold text-foreground">{t("viability.title")}</span>
       </div>
 
       <p className="text-[10px] text-muted-foreground">
-        Clique no mapa para verificar a CTO mais próxima (raio de 200m) e portas livres.
+        {t("viability.description")}
       </p>
 
       <div className="flex gap-1.5">
@@ -73,7 +75,7 @@ export default function ViabilityPanel({ mapId, tenantId, onStartPicking, picked
           onClick={onStartPicking}
         >
           <MapPin className="w-3 h-3" />
-          {pickedPoint ? `${pickedPoint.lat.toFixed(5)}, ${pickedPoint.lon.toFixed(5)}` : "Selecionar ponto"}
+          {pickedPoint ? `${pickedPoint.lat.toFixed(5)}, ${pickedPoint.lon.toFixed(5)}` : t("viability.selectPoint")}
         </Button>
         {pickedPoint && (
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onClearPick}>
@@ -90,15 +92,15 @@ export default function ViabilityPanel({ mapId, tenantId, onStartPicking, picked
           disabled={loading}
         >
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-          Consultar Viabilidade
+          {t("viability.checkViability")}
         </Button>
       )}
 
       {searched && !loading && results.length === 0 && (
         <div className="rounded-lg bg-neon-red/5 border border-neon-red/20 p-3 text-center">
           <AlertTriangle className="w-5 h-5 text-neon-red mx-auto mb-1" />
-          <p className="text-[10px] text-neon-red font-bold">Nenhuma CTO encontrada</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">Raio de 200m sem cobertura.</p>
+          <p className="text-[10px] text-neon-red font-bold">{t("viability.noCtoFound")}</p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">{t("viability.noCoverage")}</p>
         </div>
       )}
 
@@ -120,17 +122,17 @@ export default function ViabilityPanel({ mapId, tenantId, onStartPicking, picked
               </div>
               <div className="grid grid-cols-3 gap-1 text-[9px]">
                 <div>
-                  <span className="text-muted-foreground">Distância</span>
+                  <span className="text-muted-foreground">{t("viability.distance")}</span>
                   <div className="font-mono font-bold text-neon-cyan">{r.distance_m.toFixed(0)}m</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Portas Livres</span>
+                  <span className="text-muted-foreground">{t("viability.freePorts")}</span>
                   <div className={`font-mono font-bold ${r.free_ports > 0 ? "text-neon-green" : "text-neon-red"}`}>
                     {r.free_ports}/{r.capacity}
                   </div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Ocupação</span>
+                  <span className="text-muted-foreground">{t("viability.occupancy")}</span>
                   <div className="font-mono font-bold text-foreground">{r.occupied_ports}/{r.capacity}</div>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,7 +78,7 @@ function useHostGroups() {
       if (error) throw error;
       const groups = new Map<string, { host_name: string; zabbix_host_id: string }[]>();
       for (const h of data ?? []) {
-        const g = h.host_group || "Sem Grupo";
+  const g = h.host_group || "__no_group__";
         if (!groups.has(g)) groups.set(g, []);
         groups.get(g)!.push({ host_name: h.host_name, zabbix_host_id: h.zabbix_host_id });
       }
@@ -89,6 +90,7 @@ function useHostGroups() {
 function useSLASweep() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useTranslation();
   return useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.rpc("sla_sweep_breaches");
@@ -97,14 +99,15 @@ function useSLASweep() {
     },
     onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ["sla-alerts"] });
-      toast({ title: `Compliance verificado — ${count} violação(ões) atualizada(s)` });
+      toast({ title: t("sla.complianceChecked", { count }) });
     },
-    onError: (e) => toast({ variant: "destructive", title: "Erro", description: String(e) }),
+    onError: (e) => toast({ variant: "destructive", title: t("common.error"), description: String(e) }),
   });
 }
 
 /* ─── Main Page ─── */
 export default function SLAGovernance() {
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [period, setPeriod] = useState<Period>((searchParams.get("period") as Period) || "current");
   const [selectedGroup, setSelectedGroup] = useState<string>(searchParams.get("group") || "");
@@ -251,15 +254,15 @@ export default function SLAGovernance() {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-neon-green" />
-            <h1 className="text-lg font-display font-bold text-foreground">SLA & Disponibilidade</h1>
+            <h1 className="text-lg font-display font-bold text-foreground">{t("sla.title")}</h1>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" className="h-7 gap-1 text-[10px]" onClick={() => sweep.mutate()} disabled={sweep.isPending}>
               <CheckCircle className="w-3 h-3" />
-              {sweep.isPending ? "Verificando..." : "Check Compliance"}
+              {sweep.isPending ? t("sla.checking") : t("sla.checkCompliance")}
             </Button>
             <Button size="sm" variant="outline" className="h-7 gap-1 text-[10px]" onClick={() => refetch()}>
-              <RefreshCw className="w-3 h-3" /> Atualizar
+              <RefreshCw className="w-3 h-3" /> {t("sla.refresh")}
             </Button>
             <Button
               size="sm"
@@ -277,7 +280,7 @@ export default function SLAGovernance() {
                 });
               }}
             >
-              <FileDown className="w-3 h-3" /> Exportar PDF
+              <FileDown className="w-3 h-3" /> {t("sla.exportPdf")}
             </Button>
           </div>
         </div>
@@ -288,15 +291,15 @@ export default function SLAGovernance() {
           <Select value={period} onValueChange={handlePeriodChange}>
             <SelectTrigger className="h-7 w-32 text-[10px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="current">Mês Atual</SelectItem>
-              <SelectItem value="previous">Mês Anterior</SelectItem>
+              <SelectItem value="current">{t("sla.currentMonth")}</SelectItem>
+              <SelectItem value="previous">{t("sla.previousMonth")}</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={selectedGroup || "__all__"} onValueChange={handleGroupChange}>
-            <SelectTrigger className="h-7 w-44 text-[10px]"><SelectValue placeholder="Todos os Grupos" /></SelectTrigger>
+            <SelectTrigger className="h-7 w-44 text-[10px]"><SelectValue placeholder={t("sla.allGroups")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">Todos os Grupos</SelectItem>
+              <SelectItem value="__all__">{t("sla.allGroups")}</SelectItem>
               {groupNames.map((g) => (
                 <SelectItem key={g} value={g}>{g}</SelectItem>
               ))}
@@ -304,9 +307,9 @@ export default function SLAGovernance() {
           </Select>
 
           <Select value={selectedHost || "__all__"} onValueChange={handleHostChange}>
-            <SelectTrigger className="h-7 w-48 text-[10px]"><SelectValue placeholder="Todos os Hosts" /></SelectTrigger>
+            <SelectTrigger className="h-7 w-48 text-[10px]"><SelectValue placeholder={t("sla.allHosts")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">Todos os Hosts</SelectItem>
+              <SelectItem value="__all__">{t("sla.allHosts")}</SelectItem>
               {hostList.map((h) => (
                 <SelectItem key={h.zabbix_host_id} value={h.host_name}>{h.host_name}</SelectItem>
               ))}
@@ -315,7 +318,7 @@ export default function SLAGovernance() {
 
           {hasFilters && (
             <Button size="sm" variant="ghost" className="h-7 gap-1 text-[10px] text-muted-foreground hover:text-foreground" onClick={clearFilters}>
-              <X className="w-3 h-3" /> Limpar
+              <X className="w-3 h-3" /> {t("sla.clear")}
             </Button>
           )}
 
@@ -332,17 +335,17 @@ export default function SLAGovernance() {
         <div className="p-4 space-y-6">
           {/* ── Scorecards ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            <ScoreCard icon={Activity} label="Uptime Global" value={isLoading ? null : `${metrics.uptime.toFixed(3)}%`} color={metrics.uptime >= 99.9 ? "text-neon-green" : metrics.uptime >= 99 ? "text-neon-amber" : "text-neon-red"} sub={isLoading ? "" : `${metrics.totalAlerts} incidentes no período`} />
-            <ScoreCard icon={XCircle} label="Violações SLA" value={isLoading ? null : String(metrics.breaches)} color={metrics.breaches === 0 ? "text-neon-green" : "text-neon-red"} sub={isLoading ? "" : metrics.breaches === 0 ? "Nenhuma violação" : "Incidentes fora do prazo"} />
-            <ScoreCard icon={Clock} label="Downtime Total" value={isLoading ? null : formatDuration(metrics.totalDownSeconds)} color="text-neon-amber" sub={isLoading ? "" : "Soma de indisponibilidade"} />
-            <ScoreCard icon={BarChart3} label="Ativos Monitorados" value={isLoading ? null : String(metrics.worstHosts.length || "—")} color="text-neon-cyan" sub={isLoading ? "" : "Hosts com incidentes"} />
+            <ScoreCard icon={Activity} label={t("sla.globalUptime")} value={isLoading ? null : `${metrics.uptime.toFixed(3)}%`} color={metrics.uptime >= 99.9 ? "text-neon-green" : metrics.uptime >= 99 ? "text-neon-amber" : "text-neon-red"} sub={isLoading ? "" : `${metrics.totalAlerts} ${t("sla.incidentsInPeriod")}`} />
+            <ScoreCard icon={XCircle} label={t("sla.slaViolations")} value={isLoading ? null : String(metrics.breaches)} color={metrics.breaches === 0 ? "text-neon-green" : "text-neon-red"} sub={isLoading ? "" : metrics.breaches === 0 ? t("sla.noViolations") : t("sla.outOfTime")} />
+            <ScoreCard icon={Clock} label={t("sla.totalDowntime")} value={isLoading ? null : formatDuration(metrics.totalDownSeconds)} color="text-neon-amber" sub={isLoading ? "" : t("sla.sumUnavailability")} />
+            <ScoreCard icon={BarChart3} label={t("sla.monitoredAssets")} value={isLoading ? null : String(metrics.worstHosts.length || "—")} color="text-neon-cyan" sub={isLoading ? "" : t("sla.hostsWithIncidents")} />
           </div>
 
           {/* ── Daily Uptime Chart ── */}
           <Card className="glass-card border-border/50">
             <CardHeader className="py-3 px-4">
               <CardTitle className="text-xs font-display uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <BarChart3 className="w-3.5 h-3.5" /> Uptime Diário — Últimos 30 dias
+                <BarChart3 className="w-3.5 h-3.5" /> {t("sla.dailyUptime30d")}
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4">
@@ -370,21 +373,21 @@ export default function SLAGovernance() {
             <Card className="glass-card border-border/50">
               <CardHeader className="py-3 px-4">
                 <CardTitle className="text-xs font-display uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                  <TrendingDown className="w-3.5 h-3.5" /> Pior Performance
+                  <TrendingDown className="w-3.5 h-3.5" /> {t("sla.worstPerformance")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
                 {isLoading ? (
                   <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
                 ) : metrics.worstHosts.length === 0 ? (
-                  <div className="text-center py-6 text-muted-foreground text-xs">Nenhum incidente no período</div>
+                  <div className="text-center py-6 text-muted-foreground text-xs">{t("sla.noIncidentsInPeriod")}</div>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow className="border-border/30 hover:bg-transparent">
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto">Host</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">Downtime</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">Uptime</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto">{t("sla.host")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">{t("sla.downtime")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">{t("sla.uptime")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -407,21 +410,21 @@ export default function SLAGovernance() {
             <Card className="glass-card border-border/50">
               <CardHeader className="py-3 px-4">
                 <CardTitle className="text-xs font-display uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Políticas de SLA
+                  <ShieldCheck className="w-3.5 h-3.5" /> {t("sla.slaPolicies")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
                 {policiesLoading ? (
                   <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
                 ) : !policies?.length ? (
-                  <div className="text-center py-6 text-muted-foreground text-xs">Nenhuma política configurada</div>
+                  <div className="text-center py-6 text-muted-foreground text-xs">{t("sla.noPolicies")}</div>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow className="border-border/30 hover:bg-transparent">
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto">Política</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">Resposta</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">Resolução</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto">{t("sla.policy")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">{t("sla.response")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-2 h-auto text-right">{t("sla.resolution")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -443,7 +446,7 @@ export default function SLAGovernance() {
           <Card className="glass-card border-border/50">
             <CardHeader className="py-3 px-4">
               <CardTitle className="text-xs font-display uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <AlertTriangle className="w-3.5 h-3.5" /> Incidentes no Período
+                <AlertTriangle className="w-3.5 h-3.5" /> {t("sla.incidentsTitle")}
                 {!isLoading && <Badge variant="outline" className="text-[9px] font-mono ml-1">{filteredAlerts?.length ?? 0}</Badge>}
               </CardTitle>
             </CardHeader>
@@ -451,17 +454,17 @@ export default function SLAGovernance() {
               {alertsLoading ? (
                 <div className="px-4 space-y-2">{[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
               ) : !filteredAlerts?.length ? (
-                <div className="text-center py-8 text-muted-foreground text-xs">Sem incidentes no período selecionado</div>
+                <div className="text-center py-8 text-muted-foreground text-xs">{t("sla.noIncidentsSelected")}</div>
               ) : (
                 <ScrollArea className="max-h-[400px]">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-border/30 hover:bg-transparent">
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">Sev</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">Host</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">Alerta</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">Status</TableHead>
-                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">Duração</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">{t("sla.sev")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">{t("sla.host")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">{t("sla.alert")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">{t("sla.status")}</TableHead>
+                        <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">{t("sla.duration")}</TableHead>
                         <TableHead className="text-[10px] font-display uppercase py-1 px-3 h-auto">SLA</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -484,9 +487,9 @@ export default function SLAGovernance() {
                             <TableCell className="text-xs font-mono py-1.5 px-3 text-muted-foreground">{formatDuration(duration)}</TableCell>
                             <TableCell className="py-1.5 px-3">
                               {slaViolated ? (
-                                <Badge className="text-[8px] bg-neon-red/20 text-neon-red border-neon-red/30 hover:bg-neon-red/30">VIOLADO</Badge>
+                                <Badge className="text-[8px] bg-neon-red/20 text-neon-red border-neon-red/30 hover:bg-neon-red/30">{t("sla.violated")}</Badge>
                               ) : a.status !== "resolved" ? (
-                                <Badge variant="outline" className="text-[8px] text-neon-green border-neon-green/30">No Prazo</Badge>
+                                <Badge variant="outline" className="text-[8px] text-neon-green border-neon-green/30">{t("sla.onTime")}</Badge>
                               ) : (
                                 <Badge variant="outline" className="text-[8px] text-muted-foreground">OK</Badge>
                               )}
@@ -532,10 +535,11 @@ function SeverityDot({ severity }: { severity: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const cfg: Record<string, { label: string; cls: string }> = {
-    open: { label: "Aberto", cls: "text-neon-red border-neon-red/30" },
-    ack: { label: "ACK", cls: "text-neon-blue border-neon-blue/30" },
-    resolved: { label: "Resolvido", cls: "text-neon-green border-neon-green/30" },
+    open: { label: t("sla.statusOpen"), cls: "text-neon-red border-neon-red/30" },
+    ack: { label: t("sla.statusAck"), cls: "text-neon-blue border-neon-blue/30" },
+    resolved: { label: t("sla.statusResolved"), cls: "text-neon-green border-neon-green/30" },
   };
   const c = cfg[status] || cfg.open;
   return <Badge variant="outline" className={`text-[8px] ${c.cls}`}>{c.label}</Badge>;
