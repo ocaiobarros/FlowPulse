@@ -9,6 +9,7 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
+import { useProfile } from "@/hooks/useProfile";
 import NotificationBell from "./NotificationBell";
 import {
   DropdownMenu,
@@ -27,13 +28,16 @@ interface GlassHeaderProps {
 export default function GlassHeader({ isKiosk, onToggleKiosk }: GlassHeaderProps) {
   const { user, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { profile } = useProfile();
   const navigate = useNavigate();
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const displayName = user?.user_metadata?.display_name
+  const displayName = profile?.display_name
+    || user?.user_metadata?.display_name
     || user?.email?.split("@")[0]
     || "Operador";
   const initials = displayName.slice(0, 2).toUpperCase();
+  const avatarUrl = profile?.avatar_url;
 
   // Ctrl+K shortcut
   useEffect(() => {
@@ -120,9 +124,11 @@ export default function GlassHeader({ isKiosk, onToggleKiosk }: GlassHeaderProps
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="h-7 w-7 rounded-lg flex items-center justify-center
-                bg-primary/10 text-primary text-[10px] font-bold font-mono
+                bg-primary/10 text-primary text-[10px] font-bold font-mono overflow-hidden
                 hover:bg-primary/20 transition-colors ring-1 ring-primary/20">
-                {initials}
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                ) : initials}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent

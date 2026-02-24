@@ -2,10 +2,12 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   User, Camera, Lock, Globe2, Palette, Save, RotateCcw,
-  Eye, EyeOff, Check, Shield, ZoomIn, ZoomOut,
+  Eye, EyeOff, Check, Shield, ZoomIn, ZoomOut, Briefcase, Phone,
+  Moon, Sun,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
 import { useTheme } from "@/hooks/useTheme";
 import { toast } from "sonner";
 import { Slider } from "@/components/ui/slider";
@@ -24,18 +26,21 @@ function getStrength(pw: string): { score: number; label: string; color: string 
 }
 
 const LANGUAGES = [
-  { value: "pt-BR", label: "Português (BR)" },
-  { value: "en", label: "English" },
-  { value: "es", label: "Español" },
+  { value: "pt-BR", label: "Português (BR)", flag: "🇧🇷" },
+  { value: "en", label: "English", flag: "🇺🇸" },
+  { value: "es", label: "Español", flag: "🇪🇸" },
 ];
 
 export default function UserSettings() {
   const { user } = useAuth();
+  const { profile, refresh: refreshProfile } = useProfile();
   const { theme, setTheme } = useTheme();
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Profile state
   const [displayName, setDisplayName] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [phone, setPhone] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarZoom, setAvatarZoom] = useState(1);
   const [language, setLanguage] = useState("pt-BR");
@@ -51,17 +56,14 @@ export default function UserSettings() {
 
   // Load profile
   useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const { data } = await supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single();
-      if (data) {
-        setDisplayName(data.display_name || user.email?.split("@")[0] || "");
-        setAvatarUrl(data.avatar_url);
-      }
-      const savedLang = localStorage.getItem("flowpulse-lang");
-      if (savedLang) setLanguage(savedLang);
-    })();
-  }, [user]);
+    if (!profile || !user) return;
+    setDisplayName(profile.display_name || user.email?.split("@")[0] || "");
+    setAvatarUrl(profile.avatar_url);
+    setJobTitle(profile.job_title || "");
+    setPhone(profile.phone || "");
+    const savedLang = localStorage.getItem("flowpulse-lang");
+    if (savedLang) setLanguage(savedLang);
+  }, [profile, user]);
 
   const initials = displayName.slice(0, 2).toUpperCase() || "??";
 
@@ -79,29 +81,36 @@ export default function UserSettings() {
     const url = pub.publicUrl + `?t=${Date.now()}`;
     setAvatarUrl(url);
     await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id);
+    await refreshProfile();
     toast.success("Avatar atualizado");
-  }, [user]);
+  }, [user, refreshProfile]);
 
   const handleResetAvatar = useCallback(async () => {
     if (!user) return;
     setAvatarUrl(null);
     setAvatarZoom(1);
     await supabase.from("profiles").update({ avatar_url: null }).eq("id", user.id);
+    await refreshProfile();
     toast.success("Avatar removido");
-  }, [user]);
+  }, [user, refreshProfile]);
 
   // Save profile
   const handleSave = useCallback(async () => {
     if (!user) return;
     setSaving(true);
-    const { error } = await supabase.from("profiles").update({ display_name: displayName }).eq("id", user.id);
+    const { error } = await supabase.from("profiles").update({
+      display_name: displayName,
+      job_title: jobTitle || null,
+      phone: phone || null,
+    }).eq("id", user.id);
     if (error) { toast.error("Erro ao salvar perfil"); }
     else {
       localStorage.setItem("flowpulse-lang", language);
+      await refreshProfile();
       toast.success("Perfil salvo com sucesso");
     }
     setSaving(false);
-  }, [user, displayName, language]);
+  }, [user, displayName, jobTitle, phone, language, refreshProfile]);
 
   // Change password
   const handleChangePassword = useCallback(async () => {
@@ -195,34 +204,114 @@ export default function UserSettings() {
             />
           </div>
 
-          {/* Preferences */}
+          {/* Email (read-only) */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">E-mail</label>
+            <input
+              value={user?.email || ""}
+              readOnly
+              className="w-full px-3 py-2.5 rounded-lg bg-muted/10 border border-border/50 text-sm text-muted-foreground cursor-not-allowed"
+            />
+          </div>
+
+          {/* Job Title & Phone */}
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Briefcase className="h-3 w-3" /> Cargo
+              </label>
+              <input
+                value={jobTitle}
+                onChange={e => setJobTitle(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg bg-muted/30 border border-border text-sm text-foreground
+                  placeholder:text-muted-foreground/50 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all"
+                placeholder="Ex: Engenheiro NOC"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Phone className="h-3 w-3" /> Telefone
+              </label>
+              <input
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg bg-muted/30 border border-border text-sm text-foreground
+                  placeholder:text-muted-foreground/50 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all"
+                placeholder="+55 11 9xxxx-xxxx"
+              />
+            </div>
+          </div>
+
+          {/* Preferences */}
+          <div className="space-y-4">
+            {/* Language with flags */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                 <Globe2 className="h-3 w-3" /> Idioma
               </label>
-              <select
-                value={language}
-                onChange={e => setLanguage(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg bg-muted/30 border border-border text-sm text-foreground
-                  focus:border-primary/50 focus:outline-none transition-all appearance-none"
-              >
-                {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </select>
+              <div className="flex gap-2">
+                {LANGUAGES.map(l => (
+                  <button
+                    key={l.value}
+                    onClick={() => setLanguage(l.value)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all
+                      ${language === l.value
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted/20 text-muted-foreground hover:border-border/80"
+                      }`}
+                  >
+                    <span className="text-base">{l.flag}</span>
+                    <span>{l.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Theme visual cards */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                 <Palette className="h-3 w-3" /> Tema
               </label>
-              <select
-                value={theme}
-                onChange={e => setTheme(e.target.value as "dark" | "light")}
-                className="w-full px-3 py-2.5 rounded-lg bg-muted/30 border border-border text-sm text-foreground
-                  focus:border-primary/50 focus:outline-none transition-all appearance-none"
-              >
-                <option value="dark">🌙 Deep Space</option>
-                <option value="light">❄️ Arctic Frost</option>
-              </select>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setTheme("dark")}
+                  className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all
+                    ${theme === "dark"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                      : "border-border/50 bg-muted/10 hover:border-border"
+                    }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[hsl(220,40%,8%)] border border-white/10 flex items-center justify-center">
+                    <Moon className="h-4 w-4 text-[hsl(var(--neon-cyan))]" />
+                  </div>
+                  <span className="text-xs font-medium text-foreground">Deep Space</span>
+                  <span className="text-[9px] text-muted-foreground">Modo escuro</span>
+                  {theme === "dark" && (
+                    <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                      <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                    </div>
+                  )}
+                </button>
+                <button
+                  onClick={() => setTheme("light")}
+                  className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all
+                    ${theme === "light"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                      : "border-border/50 bg-muted/10 hover:border-border"
+                    }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[hsl(210,25%,95%)] border border-black/10 flex items-center justify-center">
+                    <Sun className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <span className="text-xs font-medium text-foreground">Arctic Frost</span>
+                  <span className="text-[9px] text-muted-foreground">Modo claro</span>
+                  {theme === "light" && (
+                    <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                      <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                    </div>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 

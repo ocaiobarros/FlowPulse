@@ -1,0 +1,4 @@
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS job_title text DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS phone text DEFAULT NULL;
