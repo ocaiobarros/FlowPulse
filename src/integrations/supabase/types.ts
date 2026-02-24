@@ -1286,6 +1286,8 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          job_title: string | null
+          phone: string | null
           tenant_id: string
           updated_at: string
         }
@@ -1295,6 +1297,8 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id: string
+          job_title?: string | null
+          phone?: string | null
           tenant_id: string
           updated_at?: string
         }
@@ -1304,6 +1308,8 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          job_title?: string | null
+          phone?: string | null
           tenant_id?: string
           updated_at?: string
         }
