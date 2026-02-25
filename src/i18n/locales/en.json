@@ -1,6 +1,7 @@
 {
   "sidebar": {
     "operations": "Operations",
+    "home": "Home",
     "flowmap": "FlowMap",
     "incidents": "Incidents",
     "monitoring": "Monitoring",

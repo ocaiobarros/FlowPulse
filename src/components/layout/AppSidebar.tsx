@@ -5,7 +5,7 @@ import {
   Map, AlertTriangle, Wrench, Search, BarChart3,
   FileText, Clock, Settings, Users, Building2, Zap, ChevronRight,
   Server, Box, MonitorCheck, Fuel, Globe, LayoutDashboard,
-  RefreshCw, Send, UserCog, BookOpen, HelpCircle,
+  RefreshCw, Send, UserCog, BookOpen, HelpCircle, Home, ExternalLink, Eye,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -20,6 +20,12 @@ import {
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import RoleGate from "@/components/auth/RoleGate";
 import SupportModal from "@/components/layout/SupportModal";
 
@@ -27,14 +33,9 @@ function useSidebarItems() {
   const { t } = useTranslation();
 
   const operationsItems = [
+    { title: t("sidebar.home"), url: "/app/operations/home", icon: Home },
     { title: t("sidebar.flowmap"), url: "/app/operations/flowmap", icon: Map },
     { title: t("sidebar.incidents"), url: "/app/operations/incidents", icon: AlertTriangle },
-  ];
-
-  const engineeringItems = [
-    { title: t("sidebar.inventory"), url: "/app/engineering/inventory", icon: Wrench },
-    { title: t("sidebar.viability"), url: "/app/engineering/viability", icon: Search },
-    { title: t("sidebar.capacity"), url: "/app/engineering/capacity", icon: BarChart3 },
   ];
 
   const monitoringItems = [
@@ -44,6 +45,12 @@ function useSidebarItems() {
     { title: t("sidebar.virtualMachines"), url: "/app/monitoring/virtual-machines", icon: MonitorCheck },
     { title: t("sidebar.bgpFlow"), url: "/app/monitoring/bgp", icon: Globe },
     { title: t("sidebar.fleetIntelligence"), url: "/app/monitoring/fleet", icon: Fuel },
+  ];
+
+  const engineeringItems = [
+    { title: t("sidebar.inventory"), url: "/app/engineering/inventory", icon: Wrench },
+    { title: t("sidebar.viability"), url: "/app/engineering/viability", icon: Search },
+    { title: t("sidebar.capacity"), url: "/app/engineering/capacity", icon: BarChart3 },
   ];
 
   const governanceItems = [
@@ -75,8 +82,6 @@ interface NavGroupProps {
 }
 
 function NavGroup({ label, items, collapsed }: NavGroupProps) {
-  const location = useLocation();
-
   return (
     <SidebarGroup>
       <SidebarGroupLabel className="text-[9px] font-display uppercase tracking-[0.2em] text-muted-foreground/60 px-3">
@@ -86,16 +91,34 @@ function NavGroup({ label, items, collapsed }: NavGroupProps) {
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.url}>
-              <SidebarMenuButton asChild>
-                <NavLink
-                  to={item.url}
-                  className="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
-                  activeClassName="bg-sidebar-accent text-primary font-medium"
-                >
-                  <item.icon className="w-3.5 h-3.5 shrink-0" />
-                  {!collapsed && <span>{item.title}</span>}
-                </NavLink>
-              </SidebarMenuButton>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <SidebarMenuButton asChild>
+                    <NavLink
+                      to={item.url}
+                      className="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+                      activeClassName="bg-sidebar-accent text-primary font-medium"
+                    >
+                      <item.icon className="w-3.5 h-3.5 shrink-0" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-52 bg-card/95 backdrop-blur-xl border-border/50">
+                  <ContextMenuItem
+                    onClick={() => window.open(item.url, "_blank")}
+                    className="gap-2 text-xs cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Abrir em Nova Aba
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => window.open(`${item.url}?kiosk=true`, "_blank")}
+                    className="gap-2 text-xs cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" /> Abrir em Modo Kiosk
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -110,8 +133,6 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const { operationsItems, monitoringItems, engineeringItems, governanceItems, settingsItems, systemItems } = useSidebarItems();
   const [supportOpen, setSupportOpen] = useState(false);
-
-  
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border sidebar-deep-space">
