@@ -70,27 +70,87 @@ async function zabbixProxy(connectionId: string, method: string, params: Record<
   return data?.result;
 }
 
-/* ─── Brand detection ─────────────── */
+/* ─── Brand detection (based on real Zabbix template keys) ─── */
+
+// Brother keys: printers.status.written, printers.status.color, number.of.printed.pages,
+//   .1.3.6.1.2.1.43.11.1.1.9.1.2 (drum), .1.3.6.1.2.1.43.10.2.1.4.1.1 (counter),
+//   ConsumableCurrentCapacity[*], CosumableCalculated[*]
+// HP keys: black, cyan, magenta, yellow (calculated %), ink.black.now/max, ink.cyan.now/max, etc.
+//   black.cartridge.type, model
+// Kyocera keys: kyocera.counter.total, kyocera.toner.percent, kyocera.toner.current,
+//   kyocera.alert.code, kyocera.statusStr1, kyocera.serial, kyocera.model
 
 function detectBrand(items: ZabbixItem[]): PrinterData["brand"] {
   const keys = items.map((i) => i.key_.toLowerCase());
-  const names = items.map((i) => i.name.toLowerCase());
-  const all = [...keys, ...names].join(" ");
+  const allKeys = keys.join("|");
 
-  if (all.includes("brother") || all.includes("drum.remaining") || all.includes("printers.status.written")) return "brother";
-  if (all.includes("ink.black") || all.includes("ink.cyan") || all.includes("black.cartridge") || all.includes("cyan.cartridge")) return "hp";
-  if (all.includes("kyocera") || all.includes("kyocera.counter")) return "kyocera";
+  // Kyocera — unique prefix
+  if (allKeys.includes("kyocera.")) return "kyocera";
+  // HP — calculated color percentages or ink.*.now keys
+  if (keys.some((k) => k === "black" || k === "cyan" || k === "magenta" || k === "yellow" || k.startsWith("ink."))) return "hp";
+  // Brother — status.written / status.color / ConsumableCalculated / number.of.printed
+  if (keys.some((k) => k.includes("printers.status") || k.includes("number.of.printed") || k.includes("consumable") || k.includes("cosumable"))) return "brother";
+  // Fallback: check OID-style keys common to Brother templates
+  if (keys.some((k) => k.startsWith(".1.3.6.1.2.1.43."))) return "brother";
   return "generic";
 }
+
+/* ─── Kyocera alert code valuemap ─── */
+const KYOCERA_ALERT_MAP: Record<string, { label: string; severity: "ok" | "warn" | "critical" }> = {
+  "0": { label: "Sem alerta", severity: "ok" },
+  "503": { label: "OK", severity: "ok" },
+  "4": { label: "Porta/tampa aberta", severity: "warn" },
+  "5": { label: "Papel preso", severity: "critical" },
+  "6": { label: "Papel preso", severity: "critical" },
+  "11": { label: "Sem papel", severity: "critical" },
+  "12": { label: "Trocar toner", severity: "warn" },
+  "18": { label: "Trocar toner", severity: "warn" },
+  "4096": { label: "Trocar toner", severity: "warn" },
+  "-7": { label: "Necessita serviço", severity: "critical" },
+};
+
+/* ─── Brother status written valuemap ─── */
+const BROTHER_STATUS_MAP: Record<string, { label: string; ok: boolean }> = {
+  "10001": { label: "Ready", ok: true },
+  "10023": { label: "Printing", ok: true },
+  "10209": { label: "Toner Low (BK)", ok: false },
+  "40000": { label: "Sleep", ok: true },
+  "40010": { label: "No Toner (BK)", ok: false },
+  "41213": { label: "No Paper", ok: false },
+  "62121": { label: "Replace Toner", ok: false },
+};
 
 function hasAlertCondition(items: ZabbixItem[]): boolean {
   return items.some((i) => {
     const k = i.key_.toLowerCase();
-    const v = i.lastvalue?.toLowerCase() || "";
-    if (k.includes("status") && (v.includes("no paper") || v.includes("paper jam") || v.includes("door open") || v.includes("error"))) return true;
-    if (k.includes("ink") || k.includes("toner") || k.includes("cartridge")) {
-      const num = parseFloat(i.lastvalue);
-      if (!isNaN(num) && num < 10) return true;
+    const v = i.lastvalue?.trim() || "";
+
+    // Kyocera alert code
+    if (k === "kyocera.alert.code") {
+      const alert = KYOCERA_ALERT_MAP[v];
+      return alert ? alert.severity !== "ok" : false;
+    }
+    // Kyocera toner percent
+    if (k === "kyocera.toner.percent") {
+      const n = parseFloat(v);
+      return !isNaN(n) && n < 15;
+    }
+    // Brother status written (numeric code)
+    if (k === "printers.status.written") {
+      const mapped = BROTHER_STATUS_MAP[v];
+      return mapped ? !mapped.ok : false;
+    }
+    // Brother status color (5 = red)
+    if (k === "printers.status.color") return v === "5";
+    // Brother consumable calculated < 10%
+    if (k.startsWith("cosumablecalculated") || k.startsWith("consumablecalculated")) {
+      const n = parseFloat(v);
+      return !isNaN(n) && n < 10;
+    }
+    // HP calculated percentages
+    if (k === "black" || k === "cyan" || k === "magenta" || k === "yellow") {
+      const n = parseFloat(v);
+      return !isNaN(n) && n < 10;
     }
     return false;
   });
@@ -123,8 +183,15 @@ function TonerBar({ label, value, color }: { label: string; value: number; color
 function PrinterCard({ printer }: { printer: PrinterData }) {
   const { host, items, brand, hasAlert } = printer;
 
+  // Find item by exact key or partial match
+  const findByKey = (exactKey: string) =>
+    items.find((i) => i.key_.toLowerCase() === exactKey.toLowerCase());
   const findValue = (pattern: string) => {
-    const item = items.find((i) => i.key_.toLowerCase().includes(pattern) || i.name.toLowerCase().includes(pattern));
+    // Try exact match first
+    const exact = findByKey(pattern);
+    if (exact) return exact.lastvalue ?? null;
+    // Partial match fallback
+    const item = items.find((i) => i.key_.toLowerCase().includes(pattern.toLowerCase()));
     return item?.lastvalue ?? null;
   };
   const findNumValue = (pattern: string) => {
@@ -134,6 +201,30 @@ function PrinterCard({ printer }: { printer: PrinterData }) {
 
   // Extract IP from host technical name
   const ip = host.host.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || host.host;
+
+  // Model detection
+  const model = findValue("model") ?? findValue("hrDeviceDescr") ?? findValue("kyocera.model") ?? null;
+  // Location
+  const location = findValue("sysLocation") ?? findValue("kyocera.sysLocation") ?? null;
+
+  // Alert message for banner
+  const alertMessage = (() => {
+    if (brand === "kyocera") {
+      const code = findValue("kyocera.alert.code");
+      if (code) {
+        const mapped = KYOCERA_ALERT_MAP[code];
+        if (mapped && mapped.severity !== "ok") return mapped.label;
+      }
+    }
+    if (brand === "brother") {
+      const sw = findValue("printers.status.written");
+      if (sw) {
+        const mapped = BROTHER_STATUS_MAP[sw];
+        if (mapped && !mapped.ok) return mapped.label;
+      }
+    }
+    return hasAlert ? "Atenção necessária" : null;
+  })();
 
   return (
     <ContextMenu>
@@ -148,7 +239,7 @@ function PrinterCard({ printer }: { printer: PrinterData }) {
           }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 min-w-0">
               <Printer className={`w-4 h-4 shrink-0 ${hasAlert ? "text-red-400" : "text-neon-cyan"}`} />
               <div className="min-w-0">
@@ -166,110 +257,187 @@ function PrinterCard({ printer }: { printer: PrinterData }) {
             </span>
           </div>
 
-          {/* Alert banner */}
-          {hasAlert && (
-            <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
-              <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
-              <span className="text-[9px] font-mono text-red-300">Atenção necessária</span>
+          {/* Model & Location */}
+          {(model || location) && (
+            <div className="mb-2 space-y-0.5">
+              {model && <p className="text-[8px] font-mono text-muted-foreground truncate">📠 {model}</p>}
+              {location && <p className="text-[8px] font-mono text-muted-foreground truncate">📍 {location}</p>}
             </div>
           )}
 
-          {/* Brand-specific content */}
+          {/* Alert banner */}
+          {alertMessage && (
+            <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
+              <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+              <span className="text-[9px] font-mono text-red-300">{alertMessage}</span>
+            </div>
+          )}
+
+          {/* ── HP: CMYK calculated percentages ── */}
           {brand === "hp" && (
             <div className="space-y-2">
-              <TonerBar label="Black" value={findNumValue("black") ?? findNumValue("ink.black") ?? 0} color="bg-neutral-400" />
+              <TonerBar label="Black" value={findNumValue("black") ?? 0} color="bg-neutral-400" />
               <TonerBar label="Cyan" value={findNumValue("cyan") ?? 0} color="bg-cyan-500" />
               <TonerBar label="Magenta" value={findNumValue("magenta") ?? 0} color="bg-pink-500" />
               <TonerBar label="Yellow" value={findNumValue("yellow") ?? 0} color="bg-yellow-500" />
+              {/* Cartridge types */}
+              {(() => {
+                const cartType = findValue("black.cartridge.type");
+                return cartType ? (
+                  <p className="text-[8px] font-mono text-muted-foreground mt-1 truncate">Cartucho: {cartType}</p>
+                ) : null;
+              })()}
             </div>
           )}
 
+          {/* ── Brother: Consumables + Status ── */}
           {brand === "brother" && (
-            <div className="space-y-3">
-              {/* Drum life */}
+            <div className="space-y-2.5">
+              {/* Discovery-based consumables (CosumableCalculated[*]) */}
               {(() => {
-                const drum = findNumValue("drum.remaining") ?? findNumValue("drum") ?? findNumValue("cilindro");
+                const consumables = items.filter((i) =>
+                  i.key_.toLowerCase().startsWith("cosumablecalculated[") ||
+                  i.key_.toLowerCase().startsWith("consumablecalculated[")
+                );
+                if (consumables.length > 0) {
+                  return consumables.map((c) => {
+                    const label = c.key_.match(/\[(.+)\]/)?.[1] || c.name;
+                    const val = parseFloat(c.lastvalue) || 0;
+                    // Toner returns 150/100/0 scheme; drum returns real %
+                    const displayVal = val > 100 ? 100 : val;
+                    return (
+                      <TonerBar
+                        key={c.itemid}
+                        label={label}
+                        value={displayVal}
+                        color={label.toLowerCase().includes("drum") || label.toLowerCase().includes("belt") ? "bg-blue-500" : "bg-neutral-400"}
+                      />
+                    );
+                  });
+                }
+                // Fallback: direct OID drum key
+                const drum = findNumValue(".1.3.6.1.2.1.43.11.1.1.9.1.2");
                 return drum !== null ? (
                   <TonerBar label="Vida Útil Cilindro" value={drum} color="bg-blue-500" />
                 ) : null;
               })()}
-              {/* Toner */}
+
+              {/* Page counter */}
               {(() => {
-                const toner = findNumValue("toner") ?? findNumValue("black");
-                return toner !== null ? (
-                  <TonerBar label="Toner" value={toner} color="bg-neutral-400" />
+                const pages = findValue("number.of.printed.pages") ?? findValue(".1.3.6.1.2.1.43.10.2.1.4.1.1");
+                return pages ? (
+                  <div className="flex justify-between text-[9px] font-mono">
+                    <span className="text-muted-foreground">Páginas Impressas</span>
+                    <span className="text-foreground font-bold">{parseInt(pages).toLocaleString("pt-BR")}</span>
+                  </div>
                 ) : null;
               })()}
-              {/* Written status */}
+
+              {/* Status written (mapped from numeric code) */}
               {(() => {
-                const status = findValue("status.written") ?? findValue("printers.status");
-                return status ? (
-                  <div className="flex items-center gap-2 mt-1">
+                const raw = findValue("printers.status.written");
+                if (!raw) return null;
+                const mapped = BROTHER_STATUS_MAP[raw];
+                const label = mapped?.label || raw;
+                const isOk = mapped?.ok ?? true;
+                return (
+                  <div className="flex items-center gap-2">
                     <span className="text-[9px] text-muted-foreground font-mono">Status:</span>
-                    <span className={`text-[10px] font-mono font-bold ${
-                      status.toLowerCase().includes("ready") || status.toLowerCase().includes("sleep")
-                        ? "text-neon-green"
-                        : "text-red-400"
-                    }`}>
-                      {status}
+                    <span className={`text-[10px] font-mono font-bold ${isOk ? "text-neon-green" : "text-red-400"}`}>
+                      {label}
                     </span>
                   </div>
-                ) : null;
+                );
               })()}
-            </div>
-          )}
 
-          {brand === "kyocera" && (
-            <div className="space-y-3">
-              {/* Total counter */}
+              {/* Status color */}
               {(() => {
-                const total = findValue("counter.total") ?? findValue("total_pages") ?? findValue("number.of.printed");
-                return total !== null ? (
-                  <div className="text-center py-2">
-                    <p className="text-[9px] text-muted-foreground font-mono uppercase">Contador Total A4</p>
-                    <p className="text-2xl font-display font-bold text-foreground mt-1">
-                      {parseInt(total || "0").toLocaleString("pt-BR")}
-                    </p>
-                  </div>
-                ) : null;
-              })()}
-              {/* Toner levels if available */}
-              {(() => {
-                const toner = findNumValue("toner") ?? findNumValue("black");
-                return toner !== null ? <TonerBar label="Toner" value={toner} color="bg-orange-500" /> : null;
-              })()}
-              {/* Door/Paper alerts */}
-              {(() => {
-                const doorStatus = findValue("door") ?? findValue("cover");
-                const paperStatus = findValue("paper");
+                const raw = findValue("printers.status.color");
+                if (!raw) return null;
+                const colorMap: Record<string, { label: string; cls: string }> = {
+                  "2": { label: "🟢 Normal", cls: "text-neon-green" },
+                  "3": { label: "🟡 Aviso", cls: "text-yellow-400" },
+                  "5": { label: "🔴 Crítico", cls: "text-red-400" },
+                };
+                const mapped = colorMap[raw] || { label: `Código ${raw}`, cls: "text-muted-foreground" };
                 return (
-                  <div className="flex gap-2 flex-wrap">
-                    {doorStatus && (
-                      <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
-                        doorStatus.toLowerCase().includes("open") ? "bg-red-500/10 text-red-400" : "bg-neon-green/10 text-neon-green"
-                      }`}>
-                        Porta: {doorStatus}
-                      </span>
-                    )}
-                    {paperStatus && (
-                      <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
-                        paperStatus.toLowerCase().includes("empty") || paperStatus.toLowerCase().includes("no paper")
-                          ? "bg-red-500/10 text-red-400"
-                          : "bg-neon-green/10 text-neon-green"
-                      }`}>
-                        Papel: {paperStatus}
-                      </span>
-                    )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-muted-foreground font-mono">LED:</span>
+                    <span className={`text-[10px] font-mono font-bold ${mapped.cls}`}>{mapped.label}</span>
                   </div>
                 );
               })()}
             </div>
           )}
 
+          {/* ── Kyocera: Counter + Toner + Alert ── */}
+          {brand === "kyocera" && (
+            <div className="space-y-2.5">
+              {/* Total counter A4 */}
+              {(() => {
+                const total = findValue("kyocera.counter.total");
+                return total !== null ? (
+                  <div className="text-center py-1.5">
+                    <p className="text-[9px] text-muted-foreground font-mono uppercase">Contador Total A4</p>
+                    <p className="text-2xl font-display font-bold text-foreground mt-0.5">
+                      {parseInt(total || "0").toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Toner percent */}
+              {(() => {
+                const pct = findNumValue("kyocera.toner.percent");
+                const tonerType = findValue("kyocera.toner.type");
+                return pct !== null ? (
+                  <div>
+                    <TonerBar label={tonerType ? `Toner (${tonerType})` : "Toner"} value={pct} color="bg-orange-500" />
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Alert code */}
+              {(() => {
+                const code = findValue("kyocera.alert.code");
+                if (!code) return null;
+                const mapped = KYOCERA_ALERT_MAP[code];
+                if (!mapped || mapped.severity === "ok") return null;
+                return (
+                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[9px] font-mono ${
+                    mapped.severity === "critical" ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"
+                  }`}>
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    {mapped.label}
+                  </div>
+                );
+              })()}
+
+              {/* Status string */}
+              {(() => {
+                const status = findValue("kyocera.statusStr1");
+                return status ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-muted-foreground font-mono">Visor:</span>
+                    <span className="text-[10px] font-mono font-bold text-foreground">{status}</span>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Serial */}
+              {(() => {
+                const serial = findValue("kyocera.serial");
+                return serial ? (
+                  <p className="text-[8px] font-mono text-muted-foreground">S/N: {serial}</p>
+                ) : null;
+              })()}
+            </div>
+          )}
+
+          {/* ── Generic fallback ── */}
           {brand === "generic" && (
             <div className="space-y-2">
-              {/* Show top 5 relevant items */}
-              {items.filter((i) => i.lastvalue && i.lastvalue !== "0").slice(0, 5).map((item) => (
+              {items.filter((i) => i.lastvalue && i.lastvalue !== "0").slice(0, 6).map((item) => (
                 <div key={item.itemid} className="flex justify-between text-[9px] font-mono">
                   <span className="text-muted-foreground truncate mr-2">{item.name}</span>
                   <span className="text-foreground shrink-0">{item.lastvalue}</span>
@@ -278,9 +446,9 @@ function PrinterCard({ printer }: { printer: PrinterData }) {
             </div>
           )}
 
-          {/* Total pages (generic fallback) */}
-          {brand !== "kyocera" && (() => {
-            const pages = findValue("total_pages") ?? findValue("number.of.printed") ?? findValue("counter.total");
+          {/* Total pages footer (HP / generic) */}
+          {(brand === "hp" || brand === "generic") && (() => {
+            const pages = findValue("number.of.printed.pages") ?? findValue(".1.3.6.1.2.1.43.10.2.1.4.1.1");
             return pages ? (
               <div className="mt-3 pt-2 border-t border-border/20 flex justify-between text-[9px] font-mono">
                 <span className="text-muted-foreground">Total Páginas</span>
@@ -435,7 +603,7 @@ async function exportPrinterCountersPdf(printers: PrinterData[]) {
   container.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;background:#fff;padding:40px;font-family:'Segoe UI',system-ui,sans-serif;color:#1a1a2e;";
 
   const totalPages = printers.reduce((sum, p) => {
-    const v = findValue(p.items, "total_pages") || findValue(p.items, "counter.total") || findValue(p.items, "number.of.printed");
+    const v = findValue(p.items, "kyocera.counter.total") || findValue(p.items, "number.of.printed.pages") || findValue(p.items, ".1.3.6.1.2.1.43.10.2.1.4.1.1");
     const n = parseInt(v);
     return sum + (isNaN(n) ? 0 : n);
   }, 0);
@@ -468,8 +636,8 @@ async function exportPrinterCountersPdf(printers: PrinterData[]) {
       <tbody>
         ${printers.map((p) => {
           const ip = p.host.host.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || p.host.host;
-          const counter = findValue(p.items, "total_pages") || findValue(p.items, "counter.total") || findValue(p.items, "number.of.printed");
-          const serial = findValue(p.items, "serial");
+          const counter = findValue(p.items, "kyocera.counter.total") || findValue(p.items, "number.of.printed.pages") || findValue(p.items, ".1.3.6.1.2.1.43.10.2.1.4.1.1");
+          const serial = findValue(p.items, "kyocera.serial") || findValue(p.items, ".1.3.6.1.2.1.43.5.1.1.17.1");
           const num = parseInt(counter);
           return `<tr>
             <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;font-weight:500;">${p.host.name || p.host.host}</td>
@@ -571,26 +739,51 @@ export default function PrinterIntelligence() {
         hostids: config.selectedHostIds,
       }) as ZabbixHost[];
 
-      // Fetch all items for selected hosts
+      // Fetch ALL items for selected hosts (application tag "Printer" or matching keys)
       const items = await zabbixProxy(config.connectionId, "item.get", {
         output: ["itemid", "key_", "name", "lastvalue", "units", "hostid"],
         hostids: config.selectedHostIds,
-        search: { key_: "printer" },
-        searchWildcardsEnabled: true,
-        limit: 500,
+        tags: [{ tag: "Application", value: "Printer", operator: "0" }],
+        limit: 1000,
       }) as (ZabbixItem & { hostid: string })[];
 
-      // Also fetch ink/toner/counter items
+      // Fetch by specific key patterns from real templates
+      const keyPatterns = [
+        "ink.", "black", "cyan", "magenta", "yellow",        // HP
+        "printers.status", "number.of.printed", "consumable", "cosumable", // Brother
+        "kyocera.",                                            // Kyocera
+        "hrDeviceDescr", "sysLocation", "sysContact",        // General
+        "net.tcp.service",                                     // Services
+        ".1.3.6.1.2.1.43.",                                   // Printer-MIB OIDs
+      ];
       const extraItems = await zabbixProxy(config.connectionId, "item.get", {
         output: ["itemid", "key_", "name", "lastvalue", "units", "hostid"],
         hostids: config.selectedHostIds,
-        search: { key_: "ink,toner,drum,cartridge,counter,pages,serial,status,paper,door,cover" },
+        search: { key_: keyPatterns.join(",") },
         searchByAny: true,
         searchWildcardsEnabled: true,
-        limit: 500,
+        limit: 1000,
       }) as (ZabbixItem & { hostid: string })[];
 
-      const allItems = [...items, ...extraItems];
+      // Also fetch items with "Toner", "Contador", "Alertas", "Equipamento" tags
+      const taggedItems = await zabbixProxy(config.connectionId, "item.get", {
+        output: ["itemid", "key_", "name", "lastvalue", "units", "hostid"],
+        hostids: config.selectedHostIds,
+        tags: [
+          { tag: "Application", value: "Toner", operator: "0" },
+          { tag: "Application", value: "Contador", operator: "0" },
+          { tag: "Application", value: "Alertas", operator: "0" },
+          { tag: "Application", value: "Equipamento", operator: "0" },
+          { tag: "Application", value: "Consumables level %", operator: "0" },
+          { tag: "Application", value: "Consumables level", operator: "0" },
+          { tag: "Application", value: "Printer information", operator: "0" },
+          { tag: "Application", value: "Servicos", operator: "0" },
+        ],
+        searchByAny: true,
+        limit: 1000,
+      }) as (ZabbixItem & { hostid: string })[];
+
+      const allItems = [...items, ...extraItems, ...taggedItems];
       const unique = new Map<string, ZabbixItem & { hostid: string }>();
       allItems.forEach((i) => unique.set(i.itemid, i));
 
