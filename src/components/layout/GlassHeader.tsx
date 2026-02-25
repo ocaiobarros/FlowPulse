@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import {
   Sun, Moon,
 } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import SupportModal from "@/components/layout/SupportModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { useProfile } from "@/hooks/useProfile";
@@ -33,6 +34,7 @@ export default function GlassHeader({ isKiosk, onToggleKiosk }: GlassHeaderProps
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
 
   const displayName = profile?.display_name
     || user?.user_metadata?.display_name
@@ -100,10 +102,10 @@ export default function GlassHeader({ isKiosk, onToggleKiosk }: GlassHeaderProps
               <DropdownMenuItem onClick={() => navigate("/app/docs")} className="gap-2 text-xs cursor-pointer">
                 <BookOpen className="h-3.5 w-3.5" /> {t("header.documentation")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/app/docs")} className="gap-2 text-xs cursor-pointer">
+              <DropdownMenuItem onClick={() => setSupportOpen(true)} className="gap-2 text-xs cursor-pointer">
                 <MessageCircle className="h-3.5 w-3.5" /> {t("header.support")}
               </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2 text-xs cursor-pointer">
+              <DropdownMenuItem onClick={() => window.open("https://github.com/flowpulse-noc/community/discussions", "_blank")} className="gap-2 text-xs cursor-pointer">
                 <Users className="h-3.5 w-3.5" /> {t("header.community")}
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-border/30" />
@@ -203,6 +205,8 @@ export default function GlassHeader({ isKiosk, onToggleKiosk }: GlassHeaderProps
           </motion.div>
         )}
       </AnimatePresence>
+
+      <SupportModal open={supportOpen} onOpenChange={setSupportOpen} />
     </>
   );
 }
