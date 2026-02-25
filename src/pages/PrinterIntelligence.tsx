@@ -37,6 +37,20 @@ interface ZabbixItem {
   units: string;
 }
 
+interface SupplyForecast {
+  name: string;
+  currentLevel: number;
+  dailyConsumption: number;
+  daysRemaining: number | null;
+  estimatedDate: string | null;
+  dataInsufficient: boolean;
+}
+
+interface PrinterForecast {
+  hostId: string;
+  supplies: SupplyForecast[];
+}
+
 interface PrinterData {
   host: ZabbixHost;
   items: ZabbixItem[];
@@ -158,17 +172,63 @@ function hasAlertCondition(items: ZabbixItem[]): boolean {
   });
 }
 
+/* ─── Forecast tag component ──────── */
+
+function ForecastTag({ forecast }: { forecast?: SupplyForecast }) {
+  if (!forecast) return null;
+
+  if (forecast.dataInsufficient) {
+    return (
+      <span className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground italic">
+        Dados insuficientes
+      </span>
+    );
+  }
+
+  if (forecast.daysRemaining === null) {
+    return null; // consumption is ~0, toner is stable
+  }
+
+  const days = forecast.daysRemaining;
+  const dateStr = forecast.estimatedDate
+    ? new Date(forecast.estimatedDate + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+    : "";
+
+  if (days < 7) {
+    return (
+      <span className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 font-bold animate-pulse">
+        ⏰ ~{days}d ({dateStr})
+      </span>
+    );
+  }
+  if (days <= 14) {
+    return (
+      <span className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 font-semibold">
+        ⏳ ~{days}d ({dateStr})
+      </span>
+    );
+  }
+  return (
+    <span className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
+      ~{days}d ({dateStr})
+    </span>
+  );
+}
+
 /* ─── Toner bar component ─────────── */
 
-function TonerBar({ label, value, color }: { label: string; value: number; color: string }) {
+function TonerBar({ label, value, color, forecast }: { label: string; value: number; color: string; forecast?: SupplyForecast }) {
   const pct = Math.max(0, Math.min(100, value));
   const barColor = pct < 10 ? "bg-red-500 animate-pulse" : pct < 30 ? "bg-yellow-500" : color;
 
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-[9px] font-mono">
-        <span className="text-muted-foreground">{label}</span>
-        <span className={pct < 10 ? "text-red-400 font-bold" : "text-foreground"}>{pct.toFixed(0)}%</span>
+      <div className="flex justify-between items-center text-[9px] font-mono gap-1">
+        <span className="text-muted-foreground truncate">{label}</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <ForecastTag forecast={forecast} />
+          <span className={pct < 10 ? "text-red-400 font-bold" : "text-foreground"}>{pct.toFixed(0)}%</span>
+        </div>
       </div>
       <div className="h-2.5 rounded-full bg-secondary/50 overflow-hidden">
         <div
@@ -182,8 +242,15 @@ function TonerBar({ label, value, color }: { label: string; value: number; color
 
 /* ─── Printer Card ────────────────── */
 
-function PrinterCard({ printer, onBaseCounterChange }: { printer: PrinterData; onBaseCounterChange?: (hostId: string, value: number) => void }) {
+function PrinterCard({ printer, onBaseCounterChange, forecasts }: { printer: PrinterData; onBaseCounterChange?: (hostId: string, value: number) => void; forecasts?: SupplyForecast[] }) {
   const { host, items, brand, hasAlert, baseCounter, billingCounter } = printer;
+
+  // Helper to find forecast by supply name
+  const findForecast = (supplyName: string): SupplyForecast | undefined => {
+    if (!forecasts || forecasts.length === 0) return undefined;
+    const lower = supplyName.toLowerCase();
+    return forecasts.find((f) => f.name.toLowerCase().includes(lower) || lower.includes(f.name.toLowerCase()));
+  };
   const [editingBase, setEditingBase] = useState(false);
   const [baseValue, setBaseValue] = useState(String(baseCounter));
 
@@ -280,10 +347,10 @@ function PrinterCard({ printer, onBaseCounterChange }: { printer: PrinterData; o
           {/* ── HP: CMYK calculated percentages ── */}
           {brand === "hp" && (
             <div className="space-y-2">
-              <TonerBar label="Black" value={findNumValue("black") ?? 0} color="bg-neutral-400" />
-              <TonerBar label="Cyan" value={findNumValue("cyan") ?? 0} color="bg-cyan-500" />
-              <TonerBar label="Magenta" value={findNumValue("magenta") ?? 0} color="bg-pink-500" />
-              <TonerBar label="Yellow" value={findNumValue("yellow") ?? 0} color="bg-yellow-500" />
+              <TonerBar label="Black" value={findNumValue("black") ?? 0} color="bg-neutral-400" forecast={findForecast("black")} />
+              <TonerBar label="Cyan" value={findNumValue("cyan") ?? 0} color="bg-cyan-500" forecast={findForecast("cyan")} />
+              <TonerBar label="Magenta" value={findNumValue("magenta") ?? 0} color="bg-pink-500" forecast={findForecast("magenta")} />
+              <TonerBar label="Yellow" value={findNumValue("yellow") ?? 0} color="bg-yellow-500" forecast={findForecast("yellow")} />
               {/* Cartridge types */}
               {(() => {
                 const cartType = findValue("black.cartridge.type");
@@ -315,6 +382,7 @@ function PrinterCard({ printer, onBaseCounterChange }: { printer: PrinterData; o
                         label={label}
                         value={displayVal}
                         color={label.toLowerCase().includes("drum") || label.toLowerCase().includes("belt") ? "bg-blue-500" : "bg-neutral-400"}
+                        forecast={findForecast(label)}
                       />
                     );
                   });
@@ -396,7 +464,7 @@ function PrinterCard({ printer, onBaseCounterChange }: { printer: PrinterData; o
                 const tonerType = findValue("kyocera.toner.type");
                 return pct !== null ? (
                   <div>
-                    <TonerBar label={tonerType ? `Toner (${tonerType})` : "Toner"} value={pct} color="bg-orange-500" />
+                    <TonerBar label={tonerType ? `Toner (${tonerType})` : "Toner"} value={pct} color="bg-orange-500" forecast={findForecast("toner")} />
                   </div>
                 ) : null;
               })()}
@@ -879,6 +947,34 @@ export default function PrinterIntelligence() {
     },
   });
 
+  // Fetch supply forecasts (separate query, longer cache to avoid hammering Zabbix history)
+  const { data: forecastData } = useQuery<PrinterForecast[]>({
+    queryKey: ["printer-forecast", config?.connectionId, config?.selectedHostIds],
+    enabled: !!config && config.selectedHostIds.length > 0 && printerData.length > 0,
+    refetchInterval: 5 * 60_000, // every 5 minutes
+    staleTime: 4 * 60_000,
+    queryFn: async () => {
+      if (!config) return [];
+      const { data, error } = await supabase.functions.invoke("printer-status", {
+        body: {
+          tenant_id: (await supabase.auth.getUser()).data.user?.app_metadata?.tenant_id,
+          action: "supply_forecast",
+        },
+      });
+      if (error) { console.warn("Forecast fetch failed:", error); return []; }
+      return (data?.printers ?? []).map((p: any) => ({
+        hostId: p.hostId,
+        supplies: p.supplies ?? [],
+      }));
+    },
+  });
+
+  const forecastMap = useMemo(() => {
+    const map = new Map<string, SupplyForecast[]>();
+    (forecastData ?? []).forEach((f) => map.set(f.hostId, f.supplies));
+    return map;
+  }, [forecastData]);
+
   const handleBaseCounterChange = useCallback((hostId: string, value: number) => {
     const printer = printerData.find((p: PrinterData) => p.host.hostid === hostId);
     baseCounterMutation.mutate({ hostId, value, hostName: printer?.host.name || printer?.host.host || "" });
@@ -997,7 +1093,7 @@ export default function PrinterIntelligence() {
         {filteredPrinters.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-3">
             {filteredPrinters.map((p) => (
-              <PrinterCard key={p.host.hostid} printer={p} onBaseCounterChange={handleBaseCounterChange} />
+              <PrinterCard key={p.host.hostid} printer={p} onBaseCounterChange={handleBaseCounterChange} forecasts={forecastMap.get(p.host.hostid)} />
             ))}
           </div>
         )}

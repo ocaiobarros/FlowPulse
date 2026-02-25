@@ -39,6 +39,10 @@ Deno.serve(async (req) => {
       return await createMonthlySnapshot(supabase, tenantId, corsHeaders);
     }
 
+    if (action === "supply_forecast") {
+      return await getSupplyForecast(supabase, tenantId, corsHeaders);
+    }
+
     return new Response(JSON.stringify({ error: "unknown action" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -338,6 +342,183 @@ async function createMonthlySnapshot(
 
   return new Response(
     JSON.stringify({ ok: true, period, totalPages, count: entries.length }),
+    { status: 200, headers: { ...headers, "Content-Type": "application/json" } },
+  );
+}
+
+/* ─── Action: supply_forecast ─── */
+
+async function getSupplyForecast(
+  supabase: ReturnType<typeof createClient>,
+  tenantId: string,
+  headers: Record<string, string>,
+) {
+  const connectionId = await getZabbixConnection(supabase, tenantId);
+  const configs = await getPrinterConfigs(supabase, tenantId);
+
+  if (!connectionId || configs.length === 0) {
+    return new Response(
+      JSON.stringify({ printers: [], message: "Nenhuma impressora configurada." }),
+      { status: 200, headers: { ...headers, "Content-Type": "application/json" } },
+    );
+  }
+
+  const hostIds = configs.map((c) => c.zabbix_host_id);
+  const items = await fetchPrinterItems(supabase, connectionId, hostIds);
+
+  // Get host names
+  const hosts = await zabbixProxy(supabase, connectionId, "host.get", {
+    output: ["hostid", "host", "name"],
+    hostids: hostIds,
+  });
+  const hostMap = new Map((hosts ?? []).map((h: any) => [h.hostid, h]));
+
+  // For each host, find toner items and fetch 15-day history
+  const now = Math.floor(Date.now() / 1000);
+  const fifteenDaysAgo = now - 15 * 86400;
+  const oneDayAgo = now - 86400;
+
+  const forecasts: {
+    name: string;
+    hostId: string;
+    supplies: {
+      name: string;
+      currentLevel: number;
+      dailyConsumption: number;
+      daysRemaining: number | null;
+      estimatedDate: string | null;
+      dataInsufficient: boolean;
+    }[];
+  }[] = [];
+
+  for (const cfg of configs) {
+    const hostItems = items.filter((i: any) => i.hostid === cfg.zabbix_host_id);
+    const tonerItems = hostItems.filter((i: any) => {
+      const k = i.key_.toLowerCase();
+      return TONER_KEYS.some((tk) => k === tk || k.includes(tk)) ||
+        k.startsWith("cosumablecalculated") ||
+        k.startsWith("consumablecalculated");
+    });
+
+    if (tonerItems.length === 0) continue;
+
+    const host = hostMap.get(cfg.zabbix_host_id);
+    const printerName = cfg.host_name || host?.name || host?.host || cfg.zabbix_host_id;
+
+    const supplies: typeof forecasts[0]["supplies"] = [];
+
+    for (const item of tonerItems) {
+      const currentLevel = parseFloat(item.lastvalue);
+      if (isNaN(currentLevel)) continue;
+      const clampedCurrent = Math.min(100, Math.max(0, currentLevel));
+
+      // Check if data is stale (no update in 24h)
+      // We'll check via history — if no history points in the last day, mark as insufficient
+      let dataInsufficient = false;
+
+      try {
+        // Determine history type: 0=float, 3=unsigned
+        const valueType = item.value_type ?? "0";
+        const historyType = valueType === "3" ? 3 : 0;
+
+        const history = await zabbixProxy(supabase, connectionId, "history.get", {
+          output: ["clock", "value"],
+          itemids: [item.itemid],
+          history: historyType,
+          time_from: fifteenDaysAgo,
+          time_till: now,
+          sortfield: "clock",
+          sortorder: "ASC",
+          limit: 500,
+        });
+
+        if (!history || history.length < 2) {
+          dataInsufficient = true;
+          supplies.push({
+            name: item.name || item.key_,
+            currentLevel: clampedCurrent,
+            dailyConsumption: 0,
+            daysRemaining: null,
+            estimatedDate: null,
+            dataInsufficient: true,
+          });
+          continue;
+        }
+
+        // Check staleness: latest history point must be within 24h
+        const latestClock = parseInt(history[history.length - 1].clock);
+        if (latestClock < oneDayAgo) {
+          dataInsufficient = true;
+          supplies.push({
+            name: item.name || item.key_,
+            currentLevel: clampedCurrent,
+            dailyConsumption: 0,
+            daysRemaining: null,
+            estimatedDate: null,
+            dataInsufficient: true,
+          });
+          continue;
+        }
+
+        // Calculate consumption: difference between earliest and latest value over the time span
+        const earliestVal = parseFloat(history[0].value);
+        const latestVal = parseFloat(history[history.length - 1].value);
+        const earliestClock = parseInt(history[0].clock);
+        const timeSpanDays = (latestClock - earliestClock) / 86400;
+
+        if (timeSpanDays < 1) {
+          // Not enough time span for reliable estimate
+          supplies.push({
+            name: item.name || item.key_,
+            currentLevel: clampedCurrent,
+            dailyConsumption: 0,
+            daysRemaining: null,
+            estimatedDate: null,
+            dataInsufficient: true,
+          });
+          continue;
+        }
+
+        // Consumption = how much it dropped (positive means it went down)
+        const consumption = earliestVal - latestVal;
+        const dailyConsumption = consumption > 0 ? consumption / timeSpanDays : 0;
+
+        let daysRemaining: number | null = null;
+        let estimatedDate: string | null = null;
+
+        if (dailyConsumption > 0.01) {
+          daysRemaining = Math.round(clampedCurrent / dailyConsumption);
+          const estDate = new Date(Date.now() + daysRemaining * 86400 * 1000);
+          estimatedDate = estDate.toISOString().slice(0, 10);
+        }
+
+        supplies.push({
+          name: item.name || item.key_,
+          currentLevel: clampedCurrent,
+          dailyConsumption: Math.round(dailyConsumption * 100) / 100,
+          daysRemaining,
+          estimatedDate,
+          dataInsufficient: false,
+        });
+      } catch {
+        supplies.push({
+          name: item.name || item.key_,
+          currentLevel: clampedCurrent,
+          dailyConsumption: 0,
+          daysRemaining: null,
+          estimatedDate: null,
+          dataInsufficient: true,
+        });
+      }
+    }
+
+    if (supplies.length > 0) {
+      forecasts.push({ name: printerName, hostId: cfg.zabbix_host_id, supplies });
+    }
+  }
+
+  return new Response(
+    JSON.stringify({ printers: forecasts }),
     { status: 200, headers: { ...headers, "Content-Type": "application/json" } },
   );
 }

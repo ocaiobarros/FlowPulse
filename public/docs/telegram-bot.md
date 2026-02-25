@@ -48,6 +48,12 @@ Lista impressoras com suprimentos abaixo de 10%:
 - Nome da impressora
 - Nível de cada suprimento crítico
 
+### `/estoque`
+Previsão de esgotamento de suprimentos nos próximos 10 dias:
+- Impressoras com troca estimada em breve
+- Consumo médio diário (baseado nos últimos 15 dias)
+- Data estimada de esgotamento
+
 ### `/fechamento`
 Consulta o último snapshot mensal salvo no sistema:
 - Período e data de captura
@@ -75,6 +81,16 @@ O bot envia notificações automáticas para:
 - 🔐 Acessos administrativos
 - 📊 Fechamento mensal de contadores de impressão
 - 🖨️ Erros de impressora (Papel Preso, Porta Aberta)
+- 🔮 Previsão de esgotamento de suprimentos (alerta antecipado 5 dias antes)
+
+## Previsão de Esgotamento (Predictive Supply)
+
+O sistema analisa o consumo histórico de toner/tinta dos últimos 15 dias para calcular:
+- **Consumo médio diário** (% por dia)
+- **Data estimada de esgotamento** (nível atual ÷ consumo diário)
+- **Indicador visual** no card da impressora: Verde (>15d), Amarelo (7-14d), Vermelho pulsante (<7d)
+
+Se a impressora ficar offline por mais de 24h, a projeção é suspensa e exibe "Dados insuficientes".
 
 ## Fechamento Mensal
 
