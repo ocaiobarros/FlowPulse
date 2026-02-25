@@ -149,6 +149,8 @@ async function handleMessage(
     await cmdContadores(creds, tenantId);
   } else if (text === "/toner") {
     await cmdToner(creds, tenantId);
+  } else if (text === "/estoque") {
+    await cmdEstoque(creds, tenantId);
   } else if (text === "/fechamento") {
     await cmdFechamento(creds, tenantId, supabase);
   } else if (text === "/help" || text === "/start" || text === "/ajuda") {
@@ -439,6 +441,7 @@ async function cmdAjuda(creds: TenantCreds) {
     "📋 *Comandos disponíveis:*\n\n" +
     "🖨️ `/contadores` — Lista o odômetro de faturamento (Base Manual + Leitura Zabbix) de todas as impressoras.\n\n" +
     "⚠️ `/toner` — Relatório rápido de níveis de tinta/toner (exibe apenas os que precisam de atenção).\n\n" +
+    "🔮 `/estoque` — Previsão de esgotamento de suprimentos (próximos 10 dias).\n\n" +
     "📅 `/fechamento` — Consulta o último snapshot mensal salvo no sistema.\n\n" +
     "📊 `/status [nome]` — Consulta o status em tempo real de uma impressora específica. Ex: `/status Portaria`\n\n" +
     "📡 `/status` — Resumo geral do NOC (hosts, links e alertas).\n\n" +
@@ -591,6 +594,71 @@ async function cmdToner(creds: TenantCreds, tenantId: string) {
   }
 }
 
+/* ─── Supply Forecast (Estoque) Command ─── */
+
+async function cmdEstoque(creds: TenantCreds, tenantId: string) {
+  await sendChatAction(creds.botToken, creds.chatId, "typing");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  try {
+    const resp = await fetch(`${supabaseUrl}/functions/v1/printer-status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+      body: JSON.stringify({ tenant_id: tenantId, action: "supply_forecast" }),
+    });
+    const data = await resp.json();
+
+    if (!data.printers || data.printers.length === 0) {
+      await sendMessage(creds.botToken, creds.chatId, "📭 Nenhuma impressora com dados de suprimentos.");
+      return;
+    }
+
+    // Filter only printers with supplies estimated to run out within 10 days
+    const urgent: { name: string; supply: string; days: number; date: string }[] = [];
+
+    for (const printer of data.printers) {
+      for (const supply of printer.supplies) {
+        if (supply.dataInsufficient) continue;
+        if (supply.daysRemaining !== null && supply.daysRemaining <= 10) {
+          urgent.push({
+            name: printer.name,
+            supply: supply.name,
+            days: supply.daysRemaining,
+            date: supply.estimatedDate ?? "—",
+          });
+        }
+      }
+    }
+
+    if (urgent.length === 0) {
+      await sendMessage(creds.botToken, creds.chatId,
+        "✅ *Estoque OK!*\n\nNenhum suprimento com previsão de esgotamento nos próximos 10 dias."
+      );
+      return;
+    }
+
+    // Sort by urgency
+    urgent.sort((a, b) => a.days - b.days);
+
+    const lines = urgent.map((u) => {
+      const emoji = u.days < 3 ? "🚨" : u.days < 7 ? "🔴" : "🟡";
+      const dateFormatted = u.date !== "—"
+        ? new Date(u.date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+        : "—";
+      return `${emoji} *${u.name}*\n  └ ${u.supply}: *~${u.days} dias* (${dateFormatted})`;
+    });
+
+    await sendMessage(creds.botToken, creds.chatId,
+      `🔮 *Previsão de Esgotamento (≤10 dias)*\n\n` +
+      lines.join("\n\n") +
+      `\n\n_Baseado no consumo médio dos últimos 15 dias._`
+    );
+  } catch (_err) {
+    await sendMessage(creds.botToken, creds.chatId, "⚠️ Servidor de monitoramento indisponível no momento. Tente novamente em alguns minutos.");
+  }
+}
+
 /* ─── UI Actions ─── */
 
 async function handleSetWebhook(body: Record<string, unknown>, headers: Record<string, string>) {
@@ -667,7 +735,7 @@ async function handleSendAlert(
     .from("telemetry_config")
     .select("config_key, config_value")
     .eq("tenant_id", tenantId)
-    .in("config_key", ["telegram_notify_bgp_down", "telegram_notify_high_cpu", "telegram_notify_admin_login", "telegram_notify_printer_error"]);
+    .in("config_key", ["telegram_notify_bgp_down", "telegram_notify_high_cpu", "telegram_notify_admin_login", "telegram_notify_printer_error", "telegram_notify_supply_forecast"]);
 
   const prefMap = Object.fromEntries(
     (prefs ?? []).map((r: { config_key: string; config_value: string }) => [r.config_key, r.config_value])
@@ -684,6 +752,11 @@ async function handleSendAlert(
     });
   }
   if (alertType === "printer_error" && prefMap.telegram_notify_printer_error === "false") {
+    return new Response(JSON.stringify({ skipped: true, reason: "notification_disabled" }), {
+      status: 200, headers: { ...headers, "Content-Type": "application/json" },
+    });
+  }
+  if (alertType === "supply_forecast" && prefMap.telegram_notify_supply_forecast === "false") {
     return new Response(JSON.stringify({ skipped: true, reason: "notification_disabled" }), {
       status: 200, headers: { ...headers, "Content-Type": "application/json" },
     });
