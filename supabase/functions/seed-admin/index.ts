@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const ADMIN_EMAIL = "admin@flowpulse.local";
-const ADMIN_DEFAULT_PASSWORD = "admin";
+const ADMIN_DEFAULT_PASSWORD = "admin@123";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {

@@ -49,7 +49,7 @@ export default function Login() {
           <Input
             id="identifier"
             type="text"
-            placeholder="admin ou seu@email.com"
+            placeholder="admin"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
             required
@@ -74,7 +74,7 @@ export default function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={4}
             className="bg-muted/50 border-border focus:border-primary"
           />
         </div>
