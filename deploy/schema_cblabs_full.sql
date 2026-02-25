@@ -606,7 +606,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM profiles LIMIT 1) THEN
     v_tenant_id := uuid_generate_v4();
     v_user_id := uuid_generate_v4();
-    v_hash := crypt('admin', gen_salt('bf', 12));
+    v_hash := crypt('admin@123', gen_salt('bf', 12));
 
     INSERT INTO tenants (id, name, slug) VALUES (v_tenant_id, 'CBLabs', 'cblabs');
 
@@ -619,7 +619,7 @@ BEGIN
     INSERT INTO user_roles (user_id, tenant_id, role)
     VALUES (v_user_id, v_tenant_id, 'admin');
 
-    RAISE NOTICE '✅ Admin seed criado: admin / admin';
+    RAISE NOTICE '✅ Admin seed criado: admin / admin@123';
   ELSE
     RAISE NOTICE '⏭️ Seed ignorado — já existem perfis.';
   END IF;
