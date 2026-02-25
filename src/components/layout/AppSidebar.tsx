@@ -111,7 +111,7 @@ export function AppSidebar() {
   const { operationsItems, monitoringItems, engineeringItems, governanceItems, settingsItems, systemItems } = useSidebarItems();
   const [supportOpen, setSupportOpen] = useState(false);
 
-  const helpItems: { title: string; url: string; icon: React.ComponentType<{ className?: string }> }[] = [];
+  
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border sidebar-deep-space">
