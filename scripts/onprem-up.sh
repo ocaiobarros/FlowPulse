@@ -175,6 +175,44 @@ set -a
 source "$ENV_FILE"
 set +a
 
+# ─── Auto-detect server IP/hostname for SITE_URL ──────────
+detect_server_url() {
+  # If SITE_URL is already set to a real value (not flowpulse.local or localhost), keep it
+  local current="${SITE_URL:-}"
+  if [ -n "$current" ] && [ "$current" != "http://flowpulse.local" ] && [ "$current" != "http://localhost:3000" ] && [ "$current" != "http://localhost" ]; then
+    echo "$current"
+    return
+  fi
+  # Try to detect the primary non-loopback IPv4
+  local ip=""
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if [ -z "$ip" ]; then
+    ip=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+  fi
+  if [ -n "$ip" ]; then
+    echo "http://${ip}"
+  else
+    echo "http://localhost"
+  fi
+}
+
+DETECTED_URL=$(detect_server_url)
+SITE_URL="$DETECTED_URL"
+API_EXTERNAL_URL="$DETECTED_URL"
+
+# Patch .env with detected URL if it was using default/placeholder
+CURRENT_SITE=$(grep '^SITE_URL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+if [ "$CURRENT_SITE" = "http://flowpulse.local" ] || [ "$CURRENT_SITE" = "http://localhost:3000" ] || [ -z "$CURRENT_SITE" ]; then
+  sed -i "s|^SITE_URL=.*|SITE_URL=${DETECTED_URL}|" "$ENV_FILE"
+  sed -i "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=${DETECTED_URL}|" "$ENV_FILE"
+  sed -i "s|^VITE_SUPABASE_URL=.*|VITE_SUPABASE_URL=${DETECTED_URL}|" "$ENV_FILE"
+  echo -e "  ${GREEN}✔${NC} URLs auto-detectadas: ${DETECTED_URL}"
+  # Re-source with updated values
+  set -a; source "$ENV_FILE"; set +a
+else
+  echo -e "  ${GREEN}✔${NC} SITE_URL já configurada: ${SITE_URL}"
+fi
+
 # ─── 3. Build do Frontend ─────────────────────────────────
 echo -e "\n${CYAN}[3/8] Construindo frontend...${NC}"
 cd "$PROJECT_ROOT"
@@ -184,9 +222,10 @@ if [ ! -d "node_modules" ]; then
   npm ci --silent
 fi
 
-# Build com as variáveis on-prem
-VITE_SUPABASE_URL="${VITE_SUPABASE_URL:-${SITE_URL:-http://localhost}}" \
-VITE_SUPABASE_PUBLISHABLE_KEY="${VITE_SUPABASE_PUBLISHABLE_KEY:-${ANON_KEY}}" \
+# Build com as variáveis on-prem (usa SITE_URL detectado)
+echo -e "  VITE_SUPABASE_URL=${SITE_URL}"
+VITE_SUPABASE_URL="${SITE_URL}" \
+VITE_SUPABASE_PUBLISHABLE_KEY="${ANON_KEY}" \
 npm run build
 
 # Copiar dist para deploy/
@@ -368,11 +407,21 @@ if [ -z "$AUTH_CONTAINER" ]; then
 fi
 
 # Restart auth so it picks up the pre-created types
+echo -e "  Reiniciando Auth container..."
 docker restart "$AUTH_CONTAINER" >/dev/null 2>&1 || true
-sleep 3
-if ! wait_for_service "Auth (GoTrue)" "$KONG_URL/auth/v1/health" 90; then
-  dump_logs "Auth não ficou pronto"
-  exit 1
+sleep 5
+
+# Wait for Auth health via Kong — try 60 attempts × 3s = 180s
+if ! wait_for_service "Auth (GoTrue)" "$KONG_URL/auth/v1/health" 60; then
+  echo -e "  ${YELLOW}⚠${NC}  Tentando segundo restart do Auth..."
+  docker restart "$AUTH_CONTAINER" >/dev/null 2>&1 || true
+  sleep 5
+  if ! wait_for_service "Auth (GoTrue) [retry]" "$KONG_URL/auth/v1/health" 30; then
+    echo -e "  ${RED}Logs do Auth container:${NC}"
+    docker logs "$AUTH_CONTAINER" --tail 60 2>&1 || true
+    dump_logs "Auth não ficou pronto após retry"
+    exit 1
+  fi
 fi
 
 # ─── 7. Aplicar Schema + Seed ─────────────────────────────
@@ -552,9 +601,9 @@ if $SMOKE_OK; then
   echo -e "${GREEN}║   ✅ FlowPulse On-Premise — PRONTO!                        ║${NC}"
   echo -e "${GREEN}╠══════════════════════════════════════════════════════════════╣${NC}"
   echo -e "${GREEN}║                                                              ║${NC}"
-  echo -e "${GREEN}║   🌐 UI:        http://localhost                             ║${NC}"
+  echo -e "${GREEN}║   🌐 UI:        ${SITE_URL}$(printf '%*s' $((38 - ${#SITE_URL})) '')║${NC}"
   echo -e "${GREEN}║   🔑 Login:     ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}           ║${NC}"
-  echo -e "${GREEN}║   📡 API:       http://localhost:${KONG_HTTP_PORT:-8000}      ║${NC}"
+  echo -e "${GREEN}║   📡 API:       ${SITE_URL}:${KONG_HTTP_PORT:-8000}$(printf '%*s' $((32 - ${#SITE_URL})) '')║${NC}"
   echo -e "${GREEN}║                                                              ║${NC}"
   echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
   if $KEYS_GENERATED; then
