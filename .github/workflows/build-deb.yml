@@ -57,10 +57,10 @@ jobs:
           cp deploy/server.js out/server/
           cp deploy/schema_cblabs_full.sql out/server/schema.sql
 
-          cat > out/server/package.json <<'EOF'
+          cat > out/server/package.json <<'PKGJSON'
           {
             "name": "flowpulse-server",
-            "version": "${{ steps.version.outputs.version }}",
+            "version": "1.0.0",
             "private": true,
             "main": "server.js",
             "dependencies": {
@@ -73,7 +73,7 @@ jobs:
               "dotenv": "^16.4.7"
             }
           }
-          EOF
+          PKGJSON
 
           cd out/server
           npm install --omit=dev --ignore-scripts
@@ -85,8 +85,13 @@ jobs:
           curl -fSL -o "/tmp/${NODE_TAR}" "https://nodejs.org/dist/v${NODE_EMBEDDED_VERSION}/${NODE_TAR}"
           mkdir -p out/node
           tar -xJf "/tmp/${NODE_TAR}" -C out/node --strip-components=1
-          # Keep only the node binary
           find out/node/bin -not -name "node" -not -type d -delete 2>/dev/null || true
+
+          # Registrar origem/versão para compliance
+          echo "node_version=${NODE_EMBEDDED_VERSION}" > out/node/PROVENANCE
+          echo "source=https://nodejs.org/dist/v${NODE_EMBEDDED_VERSION}/${NODE_TAR}" >> out/node/PROVENANCE
+          echo "sha256=$(sha256sum /tmp/${NODE_TAR} | awk '{print $1}')" >> out/node/PROVENANCE
+          echo "downloaded_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> out/node/PROVENANCE
 
       # ─── Assemble Package Tree ─────────────────────
       - name: Assemble .deb package tree
@@ -94,7 +99,6 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           PKG="build/flowpulse_${VERSION}"
 
-          # DEBIAN
           mkdir -p "${PKG}/DEBIAN"
           cp packaging/DEBIAN/control "${PKG}/DEBIAN/"
           cp packaging/DEBIAN/conffiles "${PKG}/DEBIAN/"
@@ -104,18 +108,19 @@ jobs:
           sed -i "s/^Version:.*/Version: ${VERSION}/" "${PKG}/DEBIAN/control"
           chmod 755 "${PKG}/DEBIAN/postinst" "${PKG}/DEBIAN/prerm" "${PKG}/DEBIAN/postrm"
 
-          # Frontend
+          # Frontend → /usr/share/flowpulse/web (read-only)
           mkdir -p "${PKG}/usr/share/flowpulse/web"
           cp -a dist/* "${PKG}/usr/share/flowpulse/web/"
 
-          # Backend
+          # Backend → /usr/lib/flowpulse/server (read-only)
           mkdir -p "${PKG}/usr/lib/flowpulse/server"
           cp -a out/server/* "${PKG}/usr/lib/flowpulse/server/"
 
-          # Node runtime
+          # Node runtime → /opt/flowpulse/node (read-only)
           mkdir -p "${PKG}/opt/flowpulse/node"
           cp -a out/node/bin "${PKG}/opt/flowpulse/node/"
           cp -a out/node/lib "${PKG}/opt/flowpulse/node/"
+          cp out/node/PROVENANCE "${PKG}/opt/flowpulse/node/"
 
           # Config
           mkdir -p "${PKG}/etc/flowpulse"
@@ -129,7 +134,7 @@ jobs:
           mkdir -p "${PKG}/etc/nginx/sites-available"
           cp packaging/nginx-flowpulse.conf "${PKG}/etc/nginx/sites-available/flowpulse"
 
-          # Data dir
+          # Data dir placeholder
           mkdir -p "${PKG}/var/lib/flowpulse/data"
 
           # Installed size
@@ -143,12 +148,30 @@ jobs:
           dpkg-deb --root-owner-group --build "build/flowpulse_${VERSION}" "build/flowpulse_${VERSION}_amd64.deb"
           ls -lh build/*.deb
 
-      # ─── Upload Artifact ───────────────────────────
+      # ─── Lint package ──────────────────────────────
+      - name: Lint .deb with lintian
+        run: |
+          sudo apt-get install -y lintian > /dev/null 2>&1
+          VERSION="${{ steps.version.outputs.version }}"
+          # --suppress-tags para avisos esperados (embedded node, etc.)
+          lintian --suppress-tags embedded-library,binary-without-manpage,no-changelog \
+            "build/flowpulse_${VERSION}_amd64.deb" || true
+
+      # ─── Generate checksums ────────────────────────
+      - name: Generate SHA256 checksums
+        run: |
+          cd build
+          sha256sum *.deb > SHA256SUMS
+          cat SHA256SUMS
+
+      # ─── Upload Artifacts ──────────────────────────
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: flowpulse-deb
-          path: build/*.deb
+          path: |
+            build/*.deb
+            build/SHA256SUMS
           retention-days: 90
 
       # ─── Create GitHub Release (on tag) ────────────
@@ -156,13 +179,19 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/*.deb
+          files: |
+            build/*.deb
+            build/SHA256SUMS
           generate_release_notes: true
           body: |
             ## FlowPulse Intelligence v${{ steps.version.outputs.version }}
 
             ### Instalação
             ```bash
+            # Verificar integridade
+            sha256sum -c SHA256SUMS
+
+            # Instalar
             apt install ./flowpulse_${{ steps.version.outputs.version }}_amd64.deb
             ```
 
@@ -172,9 +201,10 @@ jobs:
             ```
 
             ### Conteúdo
-            - Node.js ${{ env.NODE_EMBEDDED_VERSION }} embutido
+            - Node.js ${{ env.NODE_EMBEDDED_VERSION }} embutido (com PROVENANCE)
             - Frontend React compilado
             - Backend Express + dependências
             - systemd hardened service
-            - Nginx config + security headers
-            - PostgreSQL schema provisioning automático
+            - Nginx config (static cache + API proxy + SPA fallback)
+            - PostgreSQL schema (AUTO_MIGRATE controlável)
+            - SHA256SUMS para verificação de integridade
