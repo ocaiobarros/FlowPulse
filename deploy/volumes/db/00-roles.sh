@@ -6,37 +6,41 @@
 
 set -e
 
-# DB init defaults (postgres image may not provide POSTGRES_USER/POSTGRES_DB explicitly)
+# DB init defaults — Supabase image uses supabase_admin as superuser
 PW="${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}"
-DB_USER="${POSTGRES_USER:-postgres}"
+DB_USER="${POSTGRES_USER:-supabase_admin}"
 DB_NAME="${POSTGRES_DB:-postgres}"
 
 psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$DB_NAME" <<-EOSQL
 
--- Supabase requires these roles to exist
-DO $$ BEGIN
+-- The postgres role is required by GoTrue migrations (grant ... to postgres)
+DO \$\$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
     CREATE ROLE postgres LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS;
   END IF;
-END $$;
+END \$\$;
 
-DO $$ BEGIN
+-- Authenticator role (used by PostgREST)
+DO \$\$ BEGIN
   CREATE ROLE authenticator NOINHERIT LOGIN PASSWORD '${PW}';
 EXCEPTION WHEN duplicate_object THEN
   ALTER ROLE authenticator PASSWORD '${PW}';
-END $$;
+END \$\$;
 
-DO $$ BEGIN
+DO \$\$ BEGIN
   CREATE ROLE anon NOLOGIN NOINHERIT;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END \$\$;
 
-DO $$ BEGIN
+DO \$\$ BEGIN
   CREATE ROLE authenticated NOLOGIN NOINHERIT;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END \$\$;
 
-DO $$ BEGIN
+DO \$\$ BEGIN
   CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END \$\$;
 
 DO \$\$ BEGIN
   CREATE ROLE supabase_auth_admin NOINHERIT LOGIN PASSWORD '${PW}';
@@ -85,6 +89,10 @@ GRANT ALL ON SCHEMA auth TO supabase_auth_admin;
 GRANT USAGE ON SCHEMA auth TO postgres, supabase_admin;
 ALTER DEFAULT PRIVILEGES FOR ROLE supabase_auth_admin IN SCHEMA auth GRANT REFERENCES ON TABLES TO postgres, supabase_admin;
 
+-- GoTrue migrations need postgres to SELECT from auth tables
+GRANT SELECT ON ALL TABLES IN SCHEMA auth TO postgres;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_auth_admin IN SCHEMA auth GRANT SELECT ON TABLES TO postgres;
+
 -- Ensure storage schema exists
 CREATE SCHEMA IF NOT EXISTS storage AUTHORIZATION supabase_storage_admin;
 GRANT ALL ON SCHEMA storage TO supabase_storage_admin;
@@ -96,7 +104,7 @@ CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS "pgcrypto" SCHEMA extensions;
-GRANT USAGE ON SCHEMA extensions TO supabase_auth_admin, supabase_storage_admin, anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA extensions TO postgres, supabase_auth_admin, supabase_storage_admin, anon, authenticated, service_role;
 
 EOSQL
 
