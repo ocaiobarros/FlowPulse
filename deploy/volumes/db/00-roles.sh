@@ -66,6 +66,10 @@ GRANT CREATE ON DATABASE ${DB_NAME} TO supabase_storage_admin;
 GRANT USAGE, CREATE ON SCHEMA public TO supabase_auth_admin;
 GRANT USAGE, CREATE ON SCHEMA public TO supabase_storage_admin;
 
+-- Critical: force schema resolution to auth/storage first (avoids enum/type drift)
+ALTER ROLE supabase_auth_admin SET search_path = auth, public;
+ALTER ROLE supabase_storage_admin SET search_path = storage, public;
+
 GRANT ALL ON ALL TABLES IN SCHEMA public TO supabase_auth_admin, supabase_storage_admin;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO supabase_auth_admin, supabase_storage_admin;
 

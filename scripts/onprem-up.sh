@@ -253,11 +253,44 @@ wait_for_container "Database" "$DB_CONTAINER" 30
 # If the init script created the auth schema but GoTrue hasn't run yet, we pre-create it.
 echo -e "  Preparando pré-requisitos do Auth..."
 docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c "
-  CREATE SCHEMA IF NOT EXISTS auth;
+  CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
+  GRANT USAGE, CREATE ON SCHEMA auth TO supabase_auth_admin;
+  ALTER ROLE supabase_auth_admin SET search_path = auth, public;
+
+  -- If factor_type was accidentally created in public, move it to auth
+  DO \$\$ BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_type t
+      JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname = 'public' AND t.typname = 'factor_type'
+    ) AND NOT EXISTS (
+      SELECT 1
+      FROM pg_type t
+      JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname = 'auth' AND t.typname = 'factor_type'
+    ) THEN
+      ALTER TYPE public.factor_type SET SCHEMA auth;
+    END IF;
+  END \$\$;
+
   DO \$\$ BEGIN
     CREATE TYPE auth.factor_type AS ENUM ('totp','webauthn');
   EXCEPTION WHEN duplicate_object THEN NULL;
   END \$\$;
+
+  DO \$\$ BEGIN
+    ALTER TYPE auth.factor_type OWNER TO supabase_auth_admin;
+  EXCEPTION WHEN undefined_object THEN NULL;
+  END \$\$;
+
+  -- Pre-apply phone value idempotently so gotrue migration cannot fail here
+  DO \$\$ BEGIN
+    ALTER TYPE auth.factor_type ADD VALUE 'phone';
+  EXCEPTION WHEN duplicate_object THEN NULL;
+           WHEN undefined_object THEN NULL;
+  END \$\$;
+
   DO \$\$ BEGIN
     CREATE TYPE auth.factor_status AS ENUM ('unverified','verified');
   EXCEPTION WHEN duplicate_object THEN NULL;
@@ -277,8 +310,8 @@ docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c "
     );
   EXCEPTION WHEN duplicate_object THEN NULL;
   END \$\$;
-" 2>/dev/null && echo -e "  ${GREEN}✔${NC} Auth types pré-criados" \
-            || echo -e "  ${YELLOW}⚠${NC}  Auth types já existiam ou erro não-fatal"
+" && echo -e "  ${GREEN}✔${NC} Auth types pré-criados" \
+             || echo -e "  ${YELLOW}⚠${NC}  Auth types já existiam ou erro não-fatal"
 
 # Now wait for Auth container
 AUTH_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q auth)
