@@ -1,7 +1,9 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║  FLOWPULSE — On-Premise Docker Bootstrap (Idempotente)          ║
-# ║  Uso: bash scripts/onprem-up.sh                                 ║
+# ║  Uso: bash scripts/onprem-up.sh [--fix]                         ║
+# ║                                                                  ║
+# ║  --fix   Limpa volumes, reseta Git e refaz tudo do zero          ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
 set -euo pipefail
@@ -12,20 +14,81 @@ DEPLOY_DIR="$PROJECT_ROOT/deploy"
 COMPOSE_FILE="$DEPLOY_DIR/docker-compose.onprem.yml"
 ENV_FILE="$DEPLOY_DIR/.env"
 ENV_EXAMPLE="$DEPLOY_DIR/.env.onprem.docker.example"
+FIX_MODE=false
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
+
+# ─── Parse args ───────────────────────────────────────────
+for arg in "$@"; do
+  case "$arg" in
+    --fix) FIX_MODE=true ;;
+    -h|--help)
+      echo "Uso: $0 [--fix]"
+      echo "  --fix   Hard-reset Git, destrói volumes Docker e reconstrói tudo"
+      exit 0
+      ;;
+  esac
+done
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║   FlowPulse On-Premise — Docker Bootstrap                   ║"
+if $FIX_MODE; then
+echo "║   ⚠️  MODO --fix ATIVADO (reset completo)                   ║"
+fi
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
+# ─── 0. Git Preflight ─────────────────────────────────────
+echo -e "${CYAN}[0/8] Verificando estado do repositório...${NC}"
+cd "$PROJECT_ROOT"
+
+if command -v git &>/dev/null && [ -d ".git" ]; then
+  DIRTY_FILES=$(git status --porcelain 2>/dev/null | grep -v '^\?\?' || true)
+  if [ -n "$DIRTY_FILES" ]; then
+    if $FIX_MODE; then
+      echo -e "  ${YELLOW}⚠${NC}  Arquivos modificados detectados — aplicando reset (--fix)"
+      # Preserve .env
+      [ -f "$ENV_FILE" ] && cp "$ENV_FILE" /tmp/flowpulse-env-backup
+      git fetch origin 2>/dev/null || true
+      git reset --hard origin/main 2>/dev/null || git checkout -- . 2>/dev/null || true
+      [ -f /tmp/flowpulse-env-backup ] && cp /tmp/flowpulse-env-backup "$ENV_FILE"
+      echo -e "  ${GREEN}✔${NC} Repositório resetado para origin/main"
+    else
+      echo -e "  ${RED}❌ Arquivos modificados localmente detectados:${NC}"
+      echo "$DIRTY_FILES" | head -10 | sed 's/^/     /'
+      echo ""
+      echo -e "  ${YELLOW}Opções:${NC}"
+      echo -e "    1) git stash              — salvar alterações e continuar"
+      echo -e "    2) git checkout -- .      — descartar alterações"
+      echo -e "    3) $0 --fix  — reset completo automático"
+      echo ""
+      echo -e "  ${RED}Abortando para evitar conflitos.${NC}"
+      exit 1
+    fi
+  else
+    echo -e "  ${GREEN}✔${NC} Repositório limpo"
+  fi
+
+  # Pull latest if possible
+  if git remote get-url origin &>/dev/null; then
+    echo -n "  Atualizando repositório... "
+    if git pull --ff-only 2>/dev/null; then
+      echo -e "${GREEN}✔${NC}"
+    else
+      echo -e "${YELLOW}skip${NC} (sem acesso remoto ou conflito)"
+    fi
+  fi
+else
+  echo -e "  ${YELLOW}⚠${NC}  Git não disponível — prosseguindo sem verificação"
+fi
+
 # ─── 1. Validar Docker / Compose ──────────────────────────
-echo -e "${CYAN}[1/7] Validando pré-requisitos...${NC}"
+echo -e "\n${CYAN}[1/8] Validando pré-requisitos...${NC}"
 if ! command -v docker &>/dev/null; then
   echo -e "${RED}❌ Docker não encontrado. Instale: https://docs.docker.com/engine/install/${NC}"
   exit 1
@@ -38,8 +101,17 @@ fi
 echo -e "  ${GREEN}✔${NC} Docker $(docker --version | awk '{print $3}')"
 echo -e "  ${GREEN}✔${NC} $(docker compose version)"
 
+# ─── --fix: Destruir volumes antigos ──────────────────────
+if $FIX_MODE; then
+  echo -e "\n${YELLOW}[--fix] Destruindo containers e volumes antigos...${NC}"
+  cd "$DEPLOY_DIR"
+  docker compose -f docker-compose.onprem.yml down -v 2>/dev/null || true
+  echo -e "  ${GREEN}✔${NC} Volumes e containers removidos"
+  cd "$PROJECT_ROOT"
+fi
+
 # ─── 2. Preparar .env ─────────────────────────────────────
-echo -e "\n${CYAN}[2/7] Preparando variáveis de ambiente...${NC}"
+echo -e "\n${CYAN}[2/8] Preparando variáveis de ambiente...${NC}"
 if [ ! -f "$ENV_FILE" ]; then
   if [ -f "$ENV_EXAMPLE" ]; then
     cp "$ENV_EXAMPLE" "$ENV_FILE"
@@ -59,7 +131,7 @@ source "$ENV_FILE"
 set +a
 
 # ─── 3. Build do Frontend ─────────────────────────────────
-echo -e "\n${CYAN}[3/7] Construindo frontend...${NC}"
+echo -e "\n${CYAN}[3/8] Construindo frontend...${NC}"
 cd "$PROJECT_ROOT"
 
 if [ ! -d "node_modules" ]; then
@@ -78,7 +150,7 @@ cp -r dist "$DEPLOY_DIR/dist"
 echo -e "  ${GREEN}✔${NC} Frontend compilado em deploy/dist/"
 
 # ─── 4. Criar diretório do edge functions main ────────────
-echo -e "\n${CYAN}[4/7] Preparando edge functions...${NC}"
+echo -e "\n${CYAN}[4/8] Preparando edge functions...${NC}"
 FUNCTIONS_MAIN="$PROJECT_ROOT/supabase/functions/main"
 if [ ! -d "$FUNCTIONS_MAIN" ]; then
   mkdir -p "$FUNCTIONS_MAIN"
@@ -121,7 +193,7 @@ else
 fi
 
 # ─── 5. Subir Docker Compose ──────────────────────────────
-echo -e "\n${CYAN}[5/7] Iniciando containers...${NC}"
+echo -e "\n${CYAN}[5/8] Iniciando containers...${NC}"
 cd "$DEPLOY_DIR"
 
 # Ensure init scripts are executable (required by docker-entrypoint-initdb.d)
@@ -130,7 +202,7 @@ chmod +x "$DEPLOY_DIR/volumes/db/00-roles.sh" 2>/dev/null || true
 docker compose -f docker-compose.onprem.yml --env-file .env up -d --remove-orphans
 
 # ─── 6. Aguardar healthchecks ─────────────────────────────
-echo -e "\n${CYAN}[6/7] Aguardando serviços...${NC}"
+echo -e "\n${CYAN}[6/8] Aguardando serviços...${NC}"
 
 wait_for_service() {
   local name="$1"
@@ -165,24 +237,63 @@ wait_for_container() {
     i=$((i + 1))
   done
   echo -e "  ${RED}✘${NC} $name não ficou pronto após $((max_tries * 2))s"
-  docker logs "$container_id" --tail 80 2>/dev/null || true
+  docker logs "$container_id" --tail 30 2>/dev/null || true
   return 1
 }
 
 KONG_URL="http://localhost:${KONG_HTTP_PORT:-8000}"
 wait_for_service "Kong Gateway" "$KONG_URL/rest/v1/" 45
 
+# Wait for DB to be healthy first
+DB_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q db)
+wait_for_container "Database" "$DB_CONTAINER" 30
+
+# ─── 6b. Repair Auth prerequisites ───────────────────────
+# GoTrue v2.164 expects auth.factor_type enum to exist before its MFA migration.
+# If the init script created the auth schema but GoTrue hasn't run yet, we pre-create it.
+echo -e "  Preparando pré-requisitos do Auth..."
+docker exec "$DB_CONTAINER" psql -U supabase_admin -d postgres -c "
+  CREATE SCHEMA IF NOT EXISTS auth;
+  DO \$\$ BEGIN
+    CREATE TYPE auth.factor_type AS ENUM ('totp','webauthn');
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END \$\$;
+  DO \$\$ BEGIN
+    CREATE TYPE auth.factor_status AS ENUM ('unverified','verified');
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END \$\$;
+  DO \$\$ BEGIN
+    CREATE TYPE auth.aal_level AS ENUM ('aal1','aal2','aal3');
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END \$\$;
+  DO \$\$ BEGIN
+    CREATE TYPE auth.code_challenge_method AS ENUM ('s256','plain');
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END \$\$;
+  DO \$\$ BEGIN
+    CREATE TYPE auth.one_time_token_type AS ENUM (
+      'confirmation_token','reauthentication_token','recovery_token',
+      'email_change_token_new','email_change_token_current','phone_change_token'
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END \$\$;
+" 2>/dev/null && echo -e "  ${GREEN}✔${NC} Auth types pré-criados" \
+            || echo -e "  ${YELLOW}⚠${NC}  Auth types já existiam ou erro não-fatal"
+
+# Now wait for Auth container
 AUTH_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q auth)
 if [ -z "$AUTH_CONTAINER" ]; then
   echo -e "  ${RED}✘${NC} Container do Auth não encontrado"
   exit 1
 fi
+
+# Restart auth so it picks up the pre-created types
+docker restart "$AUTH_CONTAINER" >/dev/null 2>&1 || true
+sleep 3
 wait_for_container "Auth (GoTrue)" "$AUTH_CONTAINER" 60
 
 # ─── 7. Aplicar Schema + Seed ─────────────────────────────
-echo -e "\n${CYAN}[7/7] Aplicando schema e seed admin...${NC}"
-
-DB_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q db)
+echo -e "\n${CYAN}[7/8] Aplicando schema e seed admin...${NC}"
 
 # Check if schema already applied (check for tenants table)
 SCHEMA_EXISTS=$(docker exec "$DB_CONTAINER" psql -U supabase_admin -d postgres -tAc \
@@ -220,14 +331,68 @@ else
   echo -e "  ⚠️  Resposta do seed: $(echo "$SIGNUP_RESP" | head -c 200)"
 fi
 
+# ─── 8. Smoke Test ────────────────────────────────────────
+echo -e "\n${CYAN}[8/8] Smoke test rápido...${NC}"
+SMOKE_OK=true
+
+# Test REST
+if curl -sSf "$KONG_URL/rest/v1/" -H "apikey: ${ANON_KEY}" >/dev/null 2>&1; then
+  echo -e "  ${GREEN}✔${NC} REST (PostgREST) respondendo"
+else
+  echo -e "  ${RED}✘${NC} REST não respondeu"
+  SMOKE_OK=false
+fi
+
+# Test Auth
+AUTH_HEALTH=$(curl -sS "$KONG_URL/auth/v1/health" 2>/dev/null || echo '{}')
+if echo "$AUTH_HEALTH" | grep -qi 'alive\|ok\|healthy'; then
+  echo -e "  ${GREEN}✔${NC} Auth (GoTrue) saudável"
+else
+  echo -e "  ${RED}✘${NC} Auth health: $(echo "$AUTH_HEALTH" | head -c 100)"
+  SMOKE_OK=false
+fi
+
+# Test Storage
+STORAGE_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q storage 2>/dev/null || true)
+if [ -n "$STORAGE_CONTAINER" ]; then
+  STORAGE_STATUS=$(docker inspect --format '{{.State.Status}}' "$STORAGE_CONTAINER" 2>/dev/null || echo "unknown")
+  if [ "$STORAGE_STATUS" = "running" ]; then
+    echo -e "  ${GREEN}✔${NC} Storage rodando"
+  else
+    echo -e "  ${RED}✘${NC} Storage status: $STORAGE_STATUS"
+    SMOKE_OK=false
+  fi
+fi
+
+# Test login
+LOGIN_RESP=$(curl -sS -X POST "$KONG_URL/auth/v1/token?grant_type=password" \
+  -H "apikey: ${ANON_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\": \"${ADMIN_EMAIL}\", \"password\": \"${ADMIN_PASSWORD}\"}" 2>/dev/null || echo '{}')
+
+if echo "$LOGIN_RESP" | grep -q '"access_token"'; then
+  echo -e "  ${GREEN}✔${NC} Login admin funcional"
+else
+  echo -e "  ${YELLOW}⚠${NC}  Login admin falhou: $(echo "$LOGIN_RESP" | head -c 120)"
+  SMOKE_OK=false
+fi
+
 # ─── Done ─────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║   ✅ FlowPulse On-Premise — PRONTO!                        ║${NC}"
-echo -e "${GREEN}╠══════════════════════════════════════════════════════════════╣${NC}"
-echo -e "${GREEN}║                                                              ║${NC}"
-echo -e "${GREEN}║   🌐 UI:        http://localhost                             ║${NC}"
-echo -e "${GREEN}║   🔑 Login:     ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}           ║${NC}"
-echo -e "${GREEN}║   📡 API:       http://localhost:${KONG_HTTP_PORT:-8000}      ║${NC}"
-echo -e "${GREEN}║                                                              ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+if $SMOKE_OK; then
+  echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${GREEN}║   ✅ FlowPulse On-Premise — PRONTO!                        ║${NC}"
+  echo -e "${GREEN}╠══════════════════════════════════════════════════════════════╣${NC}"
+  echo -e "${GREEN}║                                                              ║${NC}"
+  echo -e "${GREEN}║   🌐 UI:        http://localhost                             ║${NC}"
+  echo -e "${GREEN}║   🔑 Login:     ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}           ║${NC}"
+  echo -e "${GREEN}║   📡 API:       http://localhost:${KONG_HTTP_PORT:-8000}      ║${NC}"
+  echo -e "${GREEN}║                                                              ║${NC}"
+  echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+else
+  echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
+  echo -e "${YELLOW}║   ⚠️  FlowPulse On-Premise — PARCIALMENTE PRONTO           ║${NC}"
+  echo -e "${YELLOW}║   Verifique os erros acima e tente:                         ║${NC}"
+  echo -e "${YELLOW}║     bash scripts/onprem-up.sh --fix                         ║${NC}"
+  echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
+fi
