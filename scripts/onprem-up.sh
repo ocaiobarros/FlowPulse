@@ -441,9 +441,87 @@ LOGIN_RESP=$(curl -sS -X POST "$KONG_URL/auth/v1/token?grant_type=password" \
 
 if echo "$LOGIN_RESP" | grep -q '"access_token"'; then
   echo -e "  ${GREEN}✔${NC} Login admin funcional"
+  ADMIN_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 else
   echo -e "  ${YELLOW}⚠${NC}  Login admin falhou: $(echo "$LOGIN_RESP" | head -c 120)"
   SMOKE_OK=false
+  ADMIN_TOKEN=""
+fi
+
+# ─── Test: handle_new_user trigger (profile + tenant + role auto-provisioned) ───
+if [ -n "$ADMIN_TOKEN" ]; then
+  PROFILE_RESP=$(curl -sS "$KONG_URL/rest/v1/profiles?select=id,tenant_id,email,display_name&limit=1" \
+    -H "apikey: ${ANON_KEY}" \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" 2>/dev/null || echo '[]')
+
+  if echo "$PROFILE_RESP" | grep -q '"tenant_id"'; then
+    echo -e "  ${GREEN}✔${NC} Trigger handle_new_user: profile auto-provisionado"
+  else
+    echo -e "  ${RED}✘${NC} Trigger handle_new_user: profile NÃO encontrado"
+    SMOKE_OK=false
+  fi
+
+  ROLE_RESP=$(curl -sS "$KONG_URL/rest/v1/user_roles?select=role&limit=1" \
+    -H "apikey: ${ANON_KEY}" \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" 2>/dev/null || echo '[]')
+
+  if echo "$ROLE_RESP" | grep -q '"admin"'; then
+    echo -e "  ${GREEN}✔${NC} Trigger handle_new_user: role 'admin' atribuída"
+  else
+    echo -e "  ${RED}✘${NC} Trigger handle_new_user: role admin NÃO encontrada"
+    SMOKE_OK=false
+  fi
+fi
+
+# ─── Test: RLS tenant isolation (cross-tenant access blocked) ───
+if [ -n "$ADMIN_TOKEN" ]; then
+  # Extract admin's tenant_id
+  ADMIN_TENANT=$(echo "$PROFILE_RESP" | grep -o '"tenant_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  if [ -n "$ADMIN_TENANT" ]; then
+    # Create a second user to test isolation
+    GHOST_EMAIL="rls-test-$(date +%s)@flowpulse.local"
+    GHOST_RESP=$(curl -sS -X POST "$KONG_URL/auth/v1/admin/users" \
+      -H "apikey: ${SERVICE_ROLE_KEY}" \
+      -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
+      -H "Content-Type: application/json" \
+      -d "{\"email\":\"${GHOST_EMAIL}\",\"password\":\"RlsTest@9999\",\"email_confirm\":true}" 2>/dev/null || echo '{}')
+
+    GHOST_ID=$(echo "$GHOST_RESP" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [ -n "$GHOST_ID" ]; then
+      # Login as ghost user
+      GHOST_LOGIN=$(curl -sS -X POST "$KONG_URL/auth/v1/token?grant_type=password" \
+        -H "apikey: ${ANON_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"email\":\"${GHOST_EMAIL}\",\"password\":\"RlsTest@9999\"}" 2>/dev/null || echo '{}')
+
+      GHOST_TOKEN=$(echo "$GHOST_LOGIN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+      if [ -n "$GHOST_TOKEN" ]; then
+        # Ghost tries to read admin's tenant data (dashboards)
+        CROSS_RESP=$(curl -sS "$KONG_URL/rest/v1/dashboards?tenant_id=eq.${ADMIN_TENANT}&select=id&limit=1" \
+          -H "apikey: ${ANON_KEY}" \
+          -H "Authorization: Bearer ${GHOST_TOKEN}" 2>/dev/null || echo '[]')
+
+        if [ "$CROSS_RESP" = "[]" ] || echo "$CROSS_RESP" | grep -q '^\[\]$'; then
+          echo -e "  ${GREEN}✔${NC} RLS: isolamento cross-tenant confirmado"
+        else
+          echo -e "  ${RED}✘${NC} RLS VIOLADA: ghost viu dados do admin tenant!"
+          SMOKE_OK=false
+        fi
+      else
+        echo -e "  ${YELLOW}⚠${NC}  RLS test: não conseguiu logar ghost user"
+      fi
+
+      # Cleanup ghost user
+      curl -sS -X DELETE "$KONG_URL/auth/v1/admin/users/${GHOST_ID}" \
+        -H "apikey: ${SERVICE_ROLE_KEY}" \
+        -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" >/dev/null 2>&1 || true
+    else
+      echo -e "  ${YELLOW}⚠${NC}  RLS test: não conseguiu criar ghost user"
+    fi
+  fi
 fi
 
 # ─── Done ─────────────────────────────────────────────────
