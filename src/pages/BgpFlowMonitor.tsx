@@ -748,9 +748,9 @@ function useBgpRealtime(configId: string): BgpState & { refresh: () => void } {
 
   const refresh = useCallback(async () => {
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const resp = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/bgp-collector?config_id=${encodeURIComponent(configId)}`,
+        `${supabaseUrl}/functions/v1/bgp-collector?config_id=${encodeURIComponent(configId)}`,
         {
           headers: {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
@@ -1043,7 +1043,7 @@ wget ${window.location.origin}/scripts/ne8000-bgp-collector.sh
 
 # Configure as variáveis obrigatórias
 export ROUTER_HOST="${config.host || "10.150.255.1"}"
-export COLLECTOR_URL="https://${import.meta.env.VITE_SUPABASE_PROJECT_ID || "<PROJECT_ID>"}.supabase.co/functions/v1/bgp-collector"
+export COLLECTOR_URL="${import.meta.env.VITE_SUPABASE_URL || "https://<SUPABASE_URL>"}/functions/v1/bgp-collector"
 
 # Variáveis opcionais
 export CONFIG_ID="${configId}"

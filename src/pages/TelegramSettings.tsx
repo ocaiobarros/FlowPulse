@@ -125,8 +125,8 @@ export default function TelegramSettings() {
   const handleSetWebhook = async () => {
     setSettingWebhook(true);
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const webhookUrl = `https://${projectId}.supabase.co/functions/v1/telegram-bot`;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const webhookUrl = `${supabaseUrl}/functions/v1/telegram-bot`;
 
       const { data, error } = await supabase.functions.invoke("telegram-bot", {
         body: { action: "set_webhook", bot_token: config.bot_token, webhook_url: webhookUrl },
