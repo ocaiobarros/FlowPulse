@@ -9,8 +9,11 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_FILE="$SCRIPT_DIR/../deploy/.env"
+DEPLOY_DIR="$PROJECT_ROOT/deploy"
+ENV_FILE="$DEPLOY_DIR/.env"
 REPORT_FILE="$PROJECT_ROOT/smoke-report.txt"
+COMPOSE_FILE="$DEPLOY_DIR/docker-compose.onprem.yml"
+
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
@@ -253,6 +256,13 @@ else
   ((FAIL++)); report "FAIL" "Frontend Nginx (HTTP $UI_RESP)"
 fi
 
+# ─── Service Status Snapshot ─────────────────────────────
+echo -e "\n${CYAN}[+] Coletando Service Status Snapshot...${NC}"
+SERVICE_SNAPSHOT=""
+if [ -f "$COMPOSE_FILE" ]; then
+  SERVICE_SNAPSHOT=$(cd "$DEPLOY_DIR" && docker compose -f docker-compose.onprem.yml ps --format "table {{.Name}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "(não disponível)")
+fi
+
 # ─── Resultado + Relatório ────────────────────────────────
 echo ""
 TOTAL=$((PASS + FAIL))
@@ -274,6 +284,34 @@ TOTAL=$((PASS + FAIL))
     echo "  $line"
   done
   echo ""
+
+  echo "═══ Service Status Snapshot ═══"
+  echo ""
+  if [ -n "$SERVICE_SNAPSHOT" ]; then
+    echo "$SERVICE_SNAPSHOT"
+  else
+    echo "  (snapshot não disponível)"
+  fi
+  echo ""
+
+  # Health check details per container
+  echo "═══ Container Health Details ═══"
+  echo ""
+  if [ -f "$COMPOSE_FILE" ]; then
+    cd "$DEPLOY_DIR" 2>/dev/null || true
+    for svc in db auth kong rest realtime storage functions imgproxy meta nginx; do
+      cid=$(docker compose -f docker-compose.onprem.yml ps -q "$svc" 2>/dev/null || true)
+      if [ -n "$cid" ]; then
+        h_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$cid" 2>/dev/null || echo "unknown")
+        c_status=$(docker inspect --format '{{.State.Status}}' "$cid" 2>/dev/null || echo "unknown")
+        restarts=$(docker inspect --format '{{.RestartCount}}' "$cid" 2>/dev/null || echo "?")
+        printf "  %-12s status=%-10s health=%-15s restarts=%s\n" "$svc" "$c_status" "$h_status" "$restarts"
+      fi
+    done
+    cd "$PROJECT_ROOT" 2>/dev/null || true
+  fi
+  echo ""
+
   if [ "$FAIL" -eq 0 ]; then
     echo "VEREDICTO: ✅ APROVADO"
   else

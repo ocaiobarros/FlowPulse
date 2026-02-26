@@ -50,6 +50,104 @@ dump_logs() {
   cd "$PROJECT_ROOT"
 }
 
+# ─────────────────────────────────────────────────────────
+# Smart retry with exponential backoff + root-cause diagnosis
+# Usage: smart_retry "ServiceName" "container_id" "health_url" max_attempts
+# ─────────────────────────────────────────────────────────
+smart_retry() {
+  local svc_name="$1"
+  local container_id="$2"
+  local health_url="$3"
+  local max_attempts="${4:-4}"
+  local attempt=0
+  local backoff=5  # initial wait seconds
+
+  while [ $attempt -lt $max_attempts ]; do
+    attempt=$((attempt + 1))
+    local wait_secs=$((backoff * attempt))  # linear backoff: 5,10,15,20...
+    local poll_tries=$((30 + attempt * 10)) # more patience each round
+
+    echo -e "  ${CYAN}[retry $attempt/$max_attempts]${NC} Aguardando ${svc_name} (${wait_secs}s backoff, ${poll_tries} polls)..."
+
+    # Restart the container
+    docker restart "$container_id" >/dev/null 2>&1 || true
+    sleep "$wait_secs"
+
+    # Poll health
+    local i=0
+    while [ $i -lt $poll_tries ]; do
+      if curl -sSf "$health_url" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✔${NC} ${svc_name} pronto na tentativa $attempt"
+        return 0
+      fi
+      sleep 2
+      i=$((i + 1))
+    done
+
+    # Diagnose root cause from logs
+    echo -e "  ${YELLOW}⚠${NC}  ${svc_name} falhou (tentativa $attempt) — analisando causa..."
+    local recent_logs
+    recent_logs=$(docker logs "$container_id" --tail 30 2>&1 || echo "")
+
+    if echo "$recent_logs" | grep -qi 'role "postgres" does not exist'; then
+      echo -e "  ${RED}→ Causa: role 'postgres' inexistente${NC}"
+      echo -e "  ${CYAN}→ Corrigindo: criando role postgres no DB...${NC}"
+      local db_container
+      db_container=$(docker compose -f "$COMPOSE_FILE" ps -q db 2>/dev/null || true)
+      if [ -n "$db_container" ]; then
+        docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$db_container" \
+          psql -w -h 127.0.0.1 -U supabase_admin -d postgres -c \
+          "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='postgres') THEN CREATE ROLE postgres LOGIN SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS; END IF; END \$\$; GRANT SELECT ON ALL TABLES IN SCHEMA auth TO postgres; ALTER DEFAULT PRIVILEGES FOR ROLE supabase_auth_admin IN SCHEMA auth GRANT SELECT ON TABLES TO postgres;" \
+          2>/dev/null && echo -e "  ${GREEN}✔${NC} Role postgres criada" \
+                      || echo -e "  ${RED}✘${NC} Falha ao criar role postgres"
+      fi
+
+    elif echo "$recent_logs" | grep -qi 'no schema has been selected\|invalid_schema_name\|_realtime'; then
+      echo -e "  ${RED}→ Causa: schema _realtime não existe${NC}"
+      echo -e "  ${CYAN}→ Corrigindo: criando schema _realtime...${NC}"
+      local db_container
+      db_container=$(docker compose -f "$COMPOSE_FILE" ps -q db 2>/dev/null || true)
+      if [ -n "$db_container" ]; then
+        docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$db_container" \
+          psql -w -h 127.0.0.1 -U supabase_admin -d postgres -c \
+          "CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;" \
+          2>/dev/null && echo -e "  ${GREEN}✔${NC} Schema _realtime criado" \
+                      || echo -e "  ${RED}✘${NC} Falha ao criar schema _realtime"
+      fi
+
+    elif echo "$recent_logs" | grep -qi 'factor_type\|duplicate_object.*enum'; then
+      echo -e "  ${RED}→ Causa: enum auth.factor_type duplicado ou ausente${NC}"
+      echo -e "  ${CYAN}→ Corrigindo: pré-criando enums do auth...${NC}"
+      local db_container
+      db_container=$(docker compose -f "$COMPOSE_FILE" ps -q db 2>/dev/null || true)
+      if [ -n "$db_container" ]; then
+        docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$db_container" \
+          psql -w -h 127.0.0.1 -U supabase_admin -d postgres -c \
+          "DO \$\$ BEGIN CREATE TYPE auth.factor_type AS ENUM ('totp','webauthn','phone'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;" \
+          2>/dev/null || true
+      fi
+
+    elif echo "$recent_logs" | grep -qi 'password authentication failed\|FATAL.*auth'; then
+      echo -e "  ${RED}→ Causa: credenciais do banco incorretas${NC}"
+      echo -e "  ${YELLOW}→ Verifique POSTGRES_PASSWORD em deploy/.env${NC}"
+
+    elif echo "$recent_logs" | grep -qi 'connection refused\|could not connect'; then
+      echo -e "  ${RED}→ Causa: DB não acessível — aguardando mais...${NC}"
+
+    else
+      echo -e "  ${YELLOW}→ Causa não identificada automaticamente${NC}"
+      echo "$recent_logs" | tail -5
+    fi
+  done
+
+  echo -e "  ${RED}✘${NC} ${svc_name} não ficou pronto após $max_attempts tentativas"
+  if $VERBOSE; then
+    echo -e "\n${RED}═══ Logs completos de ${svc_name} ═══${NC}"
+    docker logs "$container_id" --tail 120 2>&1 || true
+  fi
+  return 1
+}
+
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║   FlowPulse On-Premise — Docker Bootstrap                   ║"
@@ -68,7 +166,6 @@ if command -v git &>/dev/null && [ -d ".git" ]; then
   if [ -n "$DIRTY_FILES" ]; then
     if $FIX_MODE; then
       echo -e "  ${YELLOW}⚠${NC}  Arquivos modificados detectados — aplicando reset (--fix)"
-      # Preserve .env
       [ -f "$ENV_FILE" ] && cp "$ENV_FILE" /tmp/flowpulse-env-backup
       git fetch origin 2>/dev/null || true
       git checkout -- . 2>/dev/null || true
@@ -92,7 +189,6 @@ if command -v git &>/dev/null && [ -d ".git" ]; then
     echo -e "  ${GREEN}✔${NC} Repositório limpo"
   fi
 
-  # Pull latest if possible
   if git remote get-url origin &>/dev/null; then
     echo -n "  Atualizando repositório... "
     if git pull --ff-only 2>/dev/null; then
@@ -137,7 +233,6 @@ if [ ! -f "$ENV_FILE" ]; then
     cp "$ENV_EXAMPLE" "$ENV_FILE"
     echo -e "  ${GREEN}✔${NC} .env criado a partir do template"
     
-    # Auto-generate secure keys on first deploy
     echo "  Gerando chaves JWT seguras..."
     if bash "$SCRIPT_DIR/generate-keys.sh" --apply "$ENV_FILE" --quiet; then
       echo -e "  ${GREEN}✔${NC} Chaves JWT geradas automaticamente (produção)"
@@ -152,7 +247,6 @@ if [ ! -f "$ENV_FILE" ]; then
 else
   echo -e "  ${GREEN}✔${NC} .env já existe"
   
-  # Check if still using demo keys
   CURRENT_JWT=$(grep '^JWT_SECRET=' "$ENV_FILE" | cut -d= -f2)
   if [ "$CURRENT_JWT" = "super-secret-jwt-token-with-at-least-32-characters-long" ] || \
      [ "$CURRENT_JWT" = "your-super-secret-jwt-token-with-at-least-32-characters-long" ]; then
@@ -177,13 +271,11 @@ set +a
 
 # ─── Auto-detect server IP/hostname for SITE_URL ──────────
 detect_server_url() {
-  # If SITE_URL is already set to a real value (not flowpulse.local or localhost), keep it
   local current="${SITE_URL:-}"
   if [ -n "$current" ] && [ "$current" != "http://flowpulse.local" ] && [ "$current" != "http://localhost:3000" ] && [ "$current" != "http://localhost" ]; then
     echo "$current"
     return
   fi
-  # Try to detect the primary non-loopback IPv4
   local ip=""
   ip=$(hostname -I 2>/dev/null | awk '{print $1}')
   if [ -z "$ip" ]; then
@@ -200,14 +292,12 @@ DETECTED_URL=$(detect_server_url)
 SITE_URL="$DETECTED_URL"
 API_EXTERNAL_URL="$DETECTED_URL"
 
-# Patch .env with detected URL if it was using default/placeholder
 CURRENT_SITE=$(grep '^SITE_URL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
 if [ "$CURRENT_SITE" = "http://flowpulse.local" ] || [ "$CURRENT_SITE" = "http://localhost:3000" ] || [ -z "$CURRENT_SITE" ]; then
   sed -i "s|^SITE_URL=.*|SITE_URL=${DETECTED_URL}|" "$ENV_FILE"
   sed -i "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=${DETECTED_URL}|" "$ENV_FILE"
   sed -i "s|^VITE_SUPABASE_URL=.*|VITE_SUPABASE_URL=${DETECTED_URL}|" "$ENV_FILE"
   echo -e "  ${GREEN}✔${NC} URLs auto-detectadas: ${DETECTED_URL}"
-  # Re-source with updated values
   set -a; source "$ENV_FILE"; set +a
 else
   echo -e "  ${GREEN}✔${NC} SITE_URL já configurada: ${SITE_URL}"
@@ -222,13 +312,11 @@ if [ ! -d "node_modules" ]; then
   npm ci --silent
 fi
 
-# Build com as variáveis on-prem (usa SITE_URL detectado)
 echo -e "  VITE_SUPABASE_URL=${SITE_URL}"
 VITE_SUPABASE_URL="${SITE_URL}" \
 VITE_SUPABASE_PUBLISHABLE_KEY="${ANON_KEY}" \
 npm run build
 
-# Copiar dist para deploy/
 rm -rf "$DEPLOY_DIR/dist"
 cp -r dist "$DEPLOY_DIR/dist"
 echo -e "  ${GREEN}✔${NC} Frontend compilado em deploy/dist/"
@@ -240,7 +328,6 @@ if [ ! -d "$FUNCTIONS_MAIN" ]; then
   mkdir -p "$FUNCTIONS_MAIN"
 fi
 
-# Create the main entry point for edge-runtime if not exists
 MAIN_INDEX="$FUNCTIONS_MAIN/index.ts"
 if [ ! -f "$MAIN_INDEX" ]; then
   cat > "$MAIN_INDEX" << 'EOFMAIN'
@@ -280,12 +367,11 @@ fi
 echo -e "\n${CYAN}[5/8] Iniciando containers...${NC}"
 cd "$DEPLOY_DIR"
 
-# Ensure init scripts are executable (required by docker-entrypoint-initdb.d)
 chmod +x "$DEPLOY_DIR/volumes/db/00-roles.sh" 2>/dev/null || true
 
 docker compose -f docker-compose.onprem.yml --env-file .env up -d --remove-orphans
 
-# ─── 6. Aguardar healthchecks ─────────────────────────────
+# ─── 6. Aguardar healthchecks com retry inteligente ───────
 echo -e "\n${CYAN}[6/8] Aguardando serviços...${NC}"
 
 wait_for_service() {
@@ -305,38 +391,23 @@ wait_for_service() {
   return 1
 }
 
-wait_for_container() {
-  local name="$1"
-  local container_id="$2"
-  local max_tries="${3:-45}"
-  local i=0
-  local status="unknown"
-  while [ $i -lt $max_tries ]; do
-    status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || echo "unknown")
-    if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
-      echo -e "  ${GREEN}✔${NC} $name está pronto (${status})"
-      return 0
-    fi
-    sleep 2
-    i=$((i + 1))
-  done
-  echo -e "  ${RED}✘${NC} $name não ficou pronto após $((max_tries * 2))s"
-  echo -e "  Último status reportado: ${status}"
-  docker inspect --format '{{json .State.Health}}' "$container_id" 2>/dev/null || true
-  docker logs "$container_id" --tail 120 2>/dev/null || true
-  return 1
-}
-
 KONG_URL="http://localhost:${KONG_HTTP_PORT:-8000}"
-wait_for_service "Kong Gateway" "$KONG_URL/rest/v1/" 45
 
-# Wait for DB to be healthy first
+# Wait for DB first (critical dependency)
 DB_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q db)
-wait_for_container "Database" "$DB_CONTAINER" 30
+echo -e "  Aguardando Database..."
+local_i=0
+while [ $local_i -lt 60 ]; do
+  db_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$DB_CONTAINER" 2>/dev/null || echo "unknown")
+  if [ "$db_status" = "healthy" ]; then
+    echo -e "  ${GREEN}✔${NC} Database pronto (healthy)"
+    break
+  fi
+  sleep 2
+  local_i=$((local_i + 1))
+done
 
 # ─── 6b. Repair Auth prerequisites ───────────────────────
-# GoTrue v2.164 expects auth.factor_type enum to exist before its MFA migration.
-# If the init script created the auth schema but GoTrue hasn't run yet, we pre-create it.
 echo -e "  Preparando pré-requisitos do Auth..."
 docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$DB_CONTAINER" psql -w -v ON_ERROR_STOP=1 -h 127.0.0.1 -U supabase_admin -d postgres -c "
   DO \$\$ BEGIN
@@ -347,90 +418,76 @@ docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$DB_CONTAINER" psql -w -v ON_E
 
   CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
   GRANT USAGE, CREATE ON SCHEMA auth TO supabase_auth_admin;
+  GRANT USAGE ON SCHEMA auth TO postgres, supabase_admin;
+  GRANT SELECT ON ALL TABLES IN SCHEMA auth TO postgres;
+  ALTER DEFAULT PRIVILEGES FOR ROLE supabase_auth_admin IN SCHEMA auth GRANT SELECT ON TABLES TO postgres;
+  ALTER DEFAULT PRIVILEGES FOR ROLE supabase_auth_admin IN SCHEMA auth GRANT REFERENCES ON TABLES TO postgres, supabase_admin;
+
   CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;
   GRANT USAGE, CREATE ON SCHEMA _realtime TO supabase_admin;
   ALTER ROLE supabase_auth_admin SET search_path = auth, public;
 
-  -- If factor_type was accidentally created in public, move it to auth
+  -- Pre-create auth enums for GoTrue migrations
   DO \$\$ BEGIN
     IF EXISTS (
-      SELECT 1
-      FROM pg_type t
-      JOIN pg_namespace n ON n.oid = t.typnamespace
+      SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
       WHERE n.nspname = 'public' AND t.typname = 'factor_type'
     ) AND NOT EXISTS (
-      SELECT 1
-      FROM pg_type t
-      JOIN pg_namespace n ON n.oid = t.typnamespace
+      SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
       WHERE n.nspname = 'auth' AND t.typname = 'factor_type'
     ) THEN
       ALTER TYPE public.factor_type SET SCHEMA auth;
     END IF;
   END \$\$;
 
-  DO \$\$ BEGIN
-    CREATE TYPE auth.factor_type AS ENUM ('totp','webauthn');
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END \$\$;
-
-  DO \$\$ BEGIN
-    ALTER TYPE auth.factor_type OWNER TO supabase_auth_admin;
-  EXCEPTION WHEN undefined_object THEN NULL;
-  END \$\$;
-
-  -- Pre-apply phone value idempotently so gotrue migration cannot fail here
-  DO \$\$ BEGIN
-    ALTER TYPE auth.factor_type ADD VALUE 'phone';
-  EXCEPTION WHEN duplicate_object THEN NULL;
-           WHEN undefined_object THEN NULL;
-  END \$\$;
-
-  DO \$\$ BEGIN
-    CREATE TYPE auth.factor_status AS ENUM ('unverified','verified');
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END \$\$;
-  DO \$\$ BEGIN
-    CREATE TYPE auth.aal_level AS ENUM ('aal1','aal2','aal3');
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END \$\$;
-  DO \$\$ BEGIN
-    CREATE TYPE auth.code_challenge_method AS ENUM ('s256','plain');
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END \$\$;
-  DO \$\$ BEGIN
-    CREATE TYPE auth.one_time_token_type AS ENUM (
-      'confirmation_token','reauthentication_token','recovery_token',
-      'email_change_token_new','email_change_token_current','phone_change_token'
-    );
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END \$\$;
+  DO \$\$ BEGIN CREATE TYPE auth.factor_type AS ENUM ('totp','webauthn'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;
+  DO \$\$ BEGIN ALTER TYPE auth.factor_type OWNER TO supabase_auth_admin; EXCEPTION WHEN undefined_object THEN NULL; END \$\$;
+  DO \$\$ BEGIN ALTER TYPE auth.factor_type ADD VALUE 'phone'; EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_object THEN NULL; END \$\$;
+  DO \$\$ BEGIN CREATE TYPE auth.factor_status AS ENUM ('unverified','verified'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;
+  DO \$\$ BEGIN CREATE TYPE auth.aal_level AS ENUM ('aal1','aal2','aal3'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;
+  DO \$\$ BEGIN CREATE TYPE auth.code_challenge_method AS ENUM ('s256','plain'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;
+  DO \$\$ BEGIN CREATE TYPE auth.one_time_token_type AS ENUM (
+    'confirmation_token','reauthentication_token','recovery_token',
+    'email_change_token_new','email_change_token_current','phone_change_token'
+  ); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$;
 " && echo -e "  ${GREEN}✔${NC} Auth types pré-criados" \
              || echo -e "  ${YELLOW}⚠${NC}  Auth types já existiam ou erro não-fatal"
 
-# Now wait for Auth container
+# Restart Auth so it picks up pre-created types/roles
 AUTH_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q auth)
 if [ -z "$AUTH_CONTAINER" ]; then
   echo -e "  ${RED}✘${NC} Container do Auth não encontrado"
   exit 1
 fi
 
-# Restart auth so it picks up the pre-created types
 echo -e "  Reiniciando Auth container..."
 docker restart "$AUTH_CONTAINER" >/dev/null 2>&1 || true
 sleep 5
 
-# Wait for Auth health via Kong — try 60 attempts × 3s = 180s
-if ! wait_for_service "Auth (GoTrue)" "$KONG_URL/auth/v1/health" 60; then
-  echo -e "  ${YELLOW}⚠${NC}  Tentando segundo restart do Auth..."
-  docker restart "$AUTH_CONTAINER" >/dev/null 2>&1 || true
-  sleep 5
-  if ! wait_for_service "Auth (GoTrue) [retry]" "$KONG_URL/auth/v1/health" 30; then
-    echo -e "  ${RED}Logs do Auth container:${NC}"
-    docker logs "$AUTH_CONTAINER" --tail 60 2>&1 || true
-    dump_logs "Auth não ficou pronto após retry"
+# Try initial health check (40 polls × 2s = 80s)
+if ! wait_for_service "Auth (GoTrue)" "$KONG_URL/auth/v1/health" 40; then
+  # Smart retry with backoff and root-cause diagnosis
+  if ! smart_retry "Auth (GoTrue)" "$AUTH_CONTAINER" "$KONG_URL/auth/v1/health" 3; then
+    dump_logs "Auth não ficou pronto"
     exit 1
   fi
 fi
+
+# Smart retry for Realtime if needed
+REALTIME_CONTAINER=$(docker compose -f docker-compose.onprem.yml ps -q realtime 2>/dev/null || true)
+if [ -n "$REALTIME_CONTAINER" ]; then
+  rt_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$REALTIME_CONTAINER" 2>/dev/null || echo "unknown")
+  if [ "$rt_status" != "healthy" ] && [ "$rt_status" != "running" ]; then
+    echo -e "  ${YELLOW}⚠${NC}  Realtime status: $rt_status — tentando recuperar..."
+    smart_retry "Realtime" "$REALTIME_CONTAINER" "$KONG_URL/realtime/v1/" 2 || \
+      echo -e "  ${YELLOW}⚠${NC}  Realtime não ficou pronto (não-crítico, continuando)"
+  else
+    echo -e "  ${GREEN}✔${NC} Realtime está pronto ($rt_status)"
+  fi
+fi
+
+# Wait for Kong to route properly
+wait_for_service "Kong Gateway" "$KONG_URL/rest/v1/" 30 || true
 
 # ─── 7. Aplicar Schema + Seed ─────────────────────────────
 echo -e "\n${CYAN}[7/8] Aplicando schema e seed admin...${NC}"
@@ -439,7 +496,7 @@ echo -e "\n${CYAN}[7/8] Aplicando schema e seed admin...${NC}"
 docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$DB_CONTAINER" psql -w -v ON_ERROR_STOP=1 -h 127.0.0.1 -U supabase_admin -d postgres -c \
   "GRANT USAGE ON SCHEMA auth TO supabase_admin; GRANT REFERENCES ON ALL TABLES IN SCHEMA auth TO supabase_admin;" 2>/dev/null || true
 
-# Check if schema already applied (check for tenants table)
+# Check if schema already applied
 SCHEMA_EXISTS=$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$DB_CONTAINER" psql -w -v ON_ERROR_STOP=1 -h 127.0.0.1 -U supabase_admin -d postgres -tAc \
   "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='tenants');" 2>/dev/null || echo "f")
 
@@ -526,7 +583,7 @@ else
   ADMIN_TOKEN=""
 fi
 
-# ─── Test: handle_new_user trigger (profile + tenant + role auto-provisioned) ───
+# ─── Test: handle_new_user trigger ───
 if [ -n "$ADMIN_TOKEN" ]; then
   PROFILE_RESP=$(curl -sS "$KONG_URL/rest/v1/profiles?select=id,tenant_id,email,display_name&limit=1" \
     -H "apikey: ${ANON_KEY}" \
@@ -551,13 +608,11 @@ if [ -n "$ADMIN_TOKEN" ]; then
   fi
 fi
 
-# ─── Test: RLS tenant isolation (cross-tenant access blocked) ───
+# ─── Test: RLS tenant isolation ───
 if [ -n "$ADMIN_TOKEN" ]; then
-  # Extract admin's tenant_id
   ADMIN_TENANT=$(echo "$PROFILE_RESP" | grep -o '"tenant_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 
   if [ -n "$ADMIN_TENANT" ]; then
-    # Create a second user to test isolation
     GHOST_EMAIL="rls-test-$(date +%s)@flowpulse.local"
     GHOST_RESP=$(curl -sS -X POST "$KONG_URL/auth/v1/admin/users" \
       -H "apikey: ${SERVICE_ROLE_KEY}" \
@@ -568,7 +623,6 @@ if [ -n "$ADMIN_TOKEN" ]; then
     GHOST_ID=$(echo "$GHOST_RESP" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
 
     if [ -n "$GHOST_ID" ]; then
-      # Login as ghost user
       GHOST_LOGIN=$(curl -sS -X POST "$KONG_URL/auth/v1/token?grant_type=password" \
         -H "apikey: ${ANON_KEY}" \
         -H "Content-Type: application/json" \
@@ -577,7 +631,6 @@ if [ -n "$ADMIN_TOKEN" ]; then
       GHOST_TOKEN=$(echo "$GHOST_LOGIN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 
       if [ -n "$GHOST_TOKEN" ]; then
-        # Ghost tries to read admin's tenant data (dashboards)
         CROSS_RESP=$(curl -sS "$KONG_URL/rest/v1/dashboards?tenant_id=eq.${ADMIN_TENANT}&select=id&limit=1" \
           -H "apikey: ${ANON_KEY}" \
           -H "Authorization: Bearer ${GHOST_TOKEN}" 2>/dev/null || echo '[]')
@@ -592,7 +645,6 @@ if [ -n "$ADMIN_TOKEN" ]; then
         echo -e "  ${YELLOW}⚠${NC}  RLS test: não conseguiu logar ghost user"
       fi
 
-      # Cleanup ghost user
       curl -sS -X DELETE "$KONG_URL/auth/v1/admin/users/${GHOST_ID}" \
         -H "apikey: ${SERVICE_ROLE_KEY}" \
         -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" >/dev/null 2>&1 || true
