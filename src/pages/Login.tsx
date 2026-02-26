@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/auth/AuthLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +10,17 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, LogIn } from "lucide-react";
 
 export default function Login() {
+  const { user, loading: authLoading } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // If already authenticated, redirect to app
+  if (!authLoading && user) {
+    return <Navigate to="/app/operations/home" replace />;
+  }
 
   const resolveEmail = (input: string): string => {
     const trimmed = input.trim();

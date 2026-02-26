@@ -271,7 +271,7 @@ export default function ModuleDashboardList({ category, title, description, icon
                           <Download className="w-3 h-3" />
                         </Button>
                         <RoleGate allowed={["admin", "editor"]}>
-                          <Button variant="outline" size="sm" onClick={() => navigate(`/builder/${dash.id}`)} className="flex-1 gap-1 text-[10px] h-7">
+                          <Button variant="outline" size="sm" onClick={() => navigate(viewBasePath ? `${viewBasePath}/${dash.id}` : `/builder/${dash.id}`)} className="flex-1 gap-1 text-[10px] h-7">
                             <Pencil className="w-3 h-3" /> Editar
                           </Button>
                         </RoleGate>
