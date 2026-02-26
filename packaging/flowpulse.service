@@ -18,7 +18,12 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/flowpulse /usr/lib/flowpulse/server /usr/share/flowpulse
+
+# IMPORTANTE: só /var/lib/flowpulse precisa de escrita.
+# /usr/lib e /usr/share são read-only (ProtectSystem=strict cuida disso).
+# Se o server.js escrever logs/cache locais, use /var/lib/flowpulse.
+ReadWritePaths=/var/lib/flowpulse
+
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
@@ -27,6 +32,9 @@ MemoryDenyWriteExecute=true
 RestrictSUIDSGID=true
 RestrictNamespaces=true
 RestrictRealtime=true
+
+# Limitar acesso a rede (o serviço só precisa de IPv4/IPv6)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 StandardOutput=journal
 StandardError=journal

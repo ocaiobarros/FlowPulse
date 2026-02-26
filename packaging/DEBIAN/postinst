@@ -13,11 +13,13 @@ case "$1" in
     install -d -o flowpulse -g flowpulse -m 750 /var/lib/flowpulse
     install -d -o flowpulse -g flowpulse -m 750 /var/lib/flowpulse/data
 
-    # ─── Permissões da aplicação ─────────────────────
-    chown -R flowpulse:flowpulse /usr/lib/flowpulse
-    chown -R flowpulse:flowpulse /usr/share/flowpulse
+    # ─── Permissões da aplicação (read-only para o serviço) ─
+    chown -R root:flowpulse /usr/lib/flowpulse
+    chmod -R 750 /usr/lib/flowpulse
+    chown -R root:flowpulse /usr/share/flowpulse
+    chmod -R 750 /usr/share/flowpulse
 
-    # ─── Secrets (só gera se ainda tem placeholders) ─
+    # ─── Secrets (só gera na PRIMEIRA instalação) ────
     ENV="/etc/flowpulse/flowpulse.env"
     if [ -f "$ENV" ] && grep -q "__GENERATE__" "$ENV"; then
       DB_PASS="$(openssl rand -hex 24)"
@@ -28,37 +30,64 @@ case "$1" in
         -e "s|JWT_SECRET=__GENERATE__|JWT_SECRET=${JWT_SECRET}|" \
         -e "s|ZABBIX_ENCRYPTION_KEY=__GENERATE__|ZABBIX_ENCRYPTION_KEY=${ZKEY}|" \
         "$ENV"
-      echo "flowpulse: secrets gerados automaticamente"
+      echo "flowpulse: secrets gerados automaticamente (primeira instalação)"
+    else
+      echo "flowpulse: secrets já configurados — preservados"
     fi
     chmod 640 "$ENV"
-    chgrp flowpulse "$ENV"
+    chown root:flowpulse "$ENV"
 
-    # ─── PostgreSQL: criar role + banco ──────────────
+    # ─── Ler valores do .env ─────────────────────────
+    DB_HOST_VALUE=$(grep '^DB_HOST=' "$ENV" | cut -d= -f2- || echo "127.0.0.1")
     DB_PASS_VALUE=$(grep '^DB_PASS=' "$ENV" | cut -d= -f2-)
     DB_NAME_VALUE=$(grep '^DB_NAME=' "$ENV" | cut -d= -f2- || echo "flowpulsedb")
     DB_USER_VALUE=$(grep '^DB_USER=' "$ENV" | cut -d= -f2- || echo "flowpulse")
 
-    if systemctl is-active --quiet postgresql; then
-      # Criar role se não existir
-      sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER_VALUE}'" 2>/dev/null | grep -q 1 || \
-        sudo -u postgres psql -c "CREATE USER ${DB_USER_VALUE} WITH PASSWORD '${DB_PASS_VALUE}'" 2>/dev/null || true
+    # ─── PostgreSQL: SOMENTE se DB é local ───────────
+    if [ "$DB_HOST_VALUE" = "127.0.0.1" ] || [ "$DB_HOST_VALUE" = "localhost" ]; then
+      if systemctl is-active --quiet postgresql; then
+        # Criar role se não existir (não altera senha se já existe)
+        if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER_VALUE}'" 2>/dev/null | grep -q 1; then
+          sudo -u postgres psql -c "CREATE USER ${DB_USER_VALUE} WITH PASSWORD '${DB_PASS_VALUE}'" 2>/dev/null || true
+          echo "flowpulse: usuário PostgreSQL criado"
+        else
+          echo "flowpulse: usuário PostgreSQL já existe — senha preservada"
+        fi
 
-      # Criar banco se não existir
-      sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME_VALUE}'" 2>/dev/null | grep -q 1 || \
-        sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME_VALUE} OWNER ${DB_USER_VALUE}" 2>/dev/null || true
+        # Criar banco se não existir
+        if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME_VALUE}'" 2>/dev/null | grep -q 1; then
+          sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME_VALUE} OWNER ${DB_USER_VALUE}" 2>/dev/null || true
+          echo "flowpulse: banco '${DB_NAME_VALUE}' criado"
+        else
+          echo "flowpulse: banco '${DB_NAME_VALUE}' já existe"
+        fi
 
-      # Extensões
-      sudo -u postgres psql -d "${DB_NAME_VALUE}" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' 2>/dev/null || true
-      sudo -u postgres psql -d "${DB_NAME_VALUE}" -c 'CREATE EXTENSION IF NOT EXISTS "pgcrypto";' 2>/dev/null || true
+        # Extensões (idempotente)
+        sudo -u postgres psql -d "${DB_NAME_VALUE}" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' 2>/dev/null || true
+        sudo -u postgres psql -d "${DB_NAME_VALUE}" -c 'CREATE EXTENSION IF NOT EXISTS "pgcrypto";' 2>/dev/null || true
 
-      # Schema (idempotente — usa IF NOT EXISTS)
-      if [ -f /usr/lib/flowpulse/server/schema.sql ]; then
-        PGPASSWORD="${DB_PASS_VALUE}" psql -h 127.0.0.1 -U "${DB_USER_VALUE}" -d "${DB_NAME_VALUE}" \
-          -f /usr/lib/flowpulse/server/schema.sql 2>/dev/null || true
-        echo "flowpulse: schema aplicado"
+        # ─── Migrations ─────────────────────────────
+        AUTO_MIGRATE=$(grep '^AUTO_MIGRATE=' "$ENV" | cut -d= -f2- || echo "0")
+        if [ "$AUTO_MIGRATE" = "1" ] && [ -f /usr/lib/flowpulse/server/schema.sql ]; then
+          echo "flowpulse: AUTO_MIGRATE=1 — aplicando schema..."
+          PGPASSWORD="${DB_PASS_VALUE}" psql -h 127.0.0.1 -U "${DB_USER_VALUE}" -d "${DB_NAME_VALUE}" \
+            -f /usr/lib/flowpulse/server/schema.sql 2>/dev/null || true
+          echo "flowpulse: schema aplicado"
+        elif [ -f /usr/lib/flowpulse/server/schema.sql ]; then
+          echo "flowpulse: AUTO_MIGRATE=0 (padrão) — schema NÃO aplicado automaticamente."
+          echo "           Para aplicar manualmente:"
+          echo "           PGPASSWORD=\$DB_PASS psql -h 127.0.0.1 -U ${DB_USER_VALUE} -d ${DB_NAME_VALUE} -f /usr/lib/flowpulse/server/schema.sql"
+          echo "           Ou defina AUTO_MIGRATE=1 em /etc/flowpulse/flowpulse.env e reinstale."
+        fi
+      else
+        echo "flowpulse: AVISO — PostgreSQL local não está rodando."
+        echo "           Inicie com: systemctl start postgresql"
+        echo "           Depois reexecute: dpkg --configure flowpulse"
       fi
     else
-      echo "flowpulse: AVISO — PostgreSQL não está rodando. Configure o banco manualmente."
+      echo "flowpulse: DB_HOST=${DB_HOST_VALUE} (remoto) — provisionamento de banco ignorado."
+      echo "           Configure o banco manualmente no servidor PostgreSQL remoto."
+      echo "           Schema: /usr/lib/flowpulse/server/schema.sql"
     fi
 
     # ─── systemd ─────────────────────────────────────
@@ -75,17 +104,28 @@ case "$1" in
       echo "flowpulse: nginx configurado"
     fi
 
+    # ─── Runtime verification ────────────────────────
+    NODE_BIN="/opt/flowpulse/node/bin/node"
+    if [ -x "$NODE_BIN" ]; then
+      EMBEDDED_VERSION=$("$NODE_BIN" -v 2>/dev/null || echo "desconhecida")
+      echo "flowpulse: Node.js runtime embutido: ${EMBEDDED_VERSION}"
+    else
+      echo "flowpulse: ERRO — runtime Node.js não encontrado em ${NODE_BIN}"
+    fi
+
     echo ""
-    echo "╔══════════════════════════════════════════════════╗"
-    echo "║   ✅ FlowPulse instalado com sucesso!            ║"
-    echo "║                                                  ║"
-    echo "║   Acesse: http://$(hostname -I | awk '{print $1}')  ║"
-    echo "║   Login:  admin@flowpulse.local / admin@123      ║"
-    echo "║   ⚠ Troque a senha no primeiro acesso!           ║"
-    echo "║                                                  ║"
-    echo "║   Config: /etc/flowpulse/flowpulse.env           ║"
-    echo "║   Logs:   journalctl -u flowpulse -f             ║"
-    echo "╚══════════════════════════════════════════════════╝"
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║   ✅ FlowPulse instalado com sucesso!                    ║"
+    echo "║                                                          ║"
+    echo "║   Acesse: http://$(hostname -I | awk '{print $1}')             ║"
+    echo "║   Login:  admin@flowpulse.local / admin@123              ║"
+    echo "║   ⚠ Troque a senha no primeiro acesso!                   ║"
+    echo "║                                                          ║"
+    echo "║   Config:  /etc/flowpulse/flowpulse.env                  ║"
+    echo "║   Logs:    journalctl -u flowpulse -f                    ║"
+    echo "║   Runtime: /opt/flowpulse/node/bin/node -v               ║"
+    echo "║   Service: systemctl cat flowpulse                       ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
     echo ""
   ;;
 esac
