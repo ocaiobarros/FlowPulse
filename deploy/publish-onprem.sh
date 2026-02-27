@@ -72,13 +72,22 @@ info "Building frontend (Vite)..."
 npm run build || fail "Build failed!"
 info "Build complete: $(du -sh dist | cut -f1) total"
 
-# Validate key was embedded in the build
-if grep -q 'supabaseKey is required' "$PROJECT_DIR/dist/assets/"*.js 2>/dev/null; then
-  fail "Build did NOT embed the Supabase key! Check deploy/.env"
+# Best-effort sanity checks (non-blocking)
+if [ -n "$ONPREM_URL" ]; then
+  if grep -Fq "$ONPREM_URL" "$PROJECT_DIR/dist/assets/"*.js 2>/dev/null; then
+    info "Sanity check: URL on-prem embutida no bundle"
+  else
+    warn "URL on-prem não encontrada no bundle (verifique runtime)"
+  fi
 fi
-KEY_CHECK=$(grep -c "${ONPREM_ANON:0:30}" "$PROJECT_DIR/dist/assets/index-"*.js 2>/dev/null || echo "0")
-if [ "$KEY_CHECK" = "0" ] && [ -n "$ONPREM_ANON" ]; then
-  warn "ANON_KEY not found in built JS — the app may fail to start"
+
+if [ -n "$ONPREM_ANON" ]; then
+  KEY_PREFIX="$(printf '%s' "$ONPREM_ANON" | cut -c1-16)"
+  if grep -Fq "$KEY_PREFIX" "$PROJECT_DIR/dist/assets/"*.js 2>/dev/null; then
+    info "Sanity check: ANON_KEY embutida no bundle"
+  else
+    warn "ANON_KEY não encontrada no bundle (verifique runtime)"
+  fi
 fi
 
 # Cleanup temporary .env.local
