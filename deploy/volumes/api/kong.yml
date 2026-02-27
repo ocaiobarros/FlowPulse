@@ -67,6 +67,11 @@ services:
           - /realtime/v1/
     plugins:
       - name: cors
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "x-realtime-api:realtime-dev"
 
   # ─── Storage ────────────────────────────────────────────
   - name: storage-v1
