@@ -74,6 +74,8 @@ rm -f "$PROJECT_DIR/.env.local"
 info "Deploying to container '$NGINX_CONTAINER'..."
 rm -rf "$DEPLOY_DIR/dist"
 cp -r "$PROJECT_DIR/dist" "$DEPLOY_DIR/dist" || fail "cp to deploy/dist failed"
+# Nginx Alpine runs as uid 101 — ensure read access on bind-mounted volume
+chmod -R o+rX "$DEPLOY_DIR/dist"
 docker compose -f "$DEPLOY_DIR/docker-compose.onprem.yml" restart nginx || fail "nginx restart failed"
 
 # ─── 6) Validation ────────────────────────────────────────────────
