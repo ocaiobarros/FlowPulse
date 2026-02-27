@@ -1124,6 +1124,21 @@ DO $$ BEGIN
   CREATE POLICY dashboards_delete ON dashboards FOR DELETE USING ((tenant_id = jwt_tenant_id() AND has_role(auth.uid(), tenant_id, 'admin')) OR is_super_admin(auth.uid()));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- ═══ ZABBIX CONNECTIONS ═══
+DO $$ BEGIN
+  CREATE POLICY zabbix_select ON zabbix_connections FOR SELECT USING (tenant_id = jwt_tenant_id() OR is_super_admin(auth.uid()));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE POLICY zabbix_insert ON zabbix_connections FOR INSERT WITH CHECK ((tenant_id = jwt_tenant_id() AND has_role(auth.uid(), tenant_id, 'admin')) OR is_super_admin(auth.uid()));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE POLICY zabbix_update ON zabbix_connections FOR UPDATE USING ((tenant_id = jwt_tenant_id() AND has_role(auth.uid(), tenant_id, 'admin')) OR is_super_admin(auth.uid()))
+    WITH CHECK ((tenant_id = jwt_tenant_id() AND has_role(auth.uid(), tenant_id, 'admin')) OR is_super_admin(auth.uid()));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE POLICY zabbix_delete ON zabbix_connections FOR DELETE USING ((tenant_id = jwt_tenant_id() AND has_role(auth.uid(), tenant_id, 'admin')) OR is_super_admin(auth.uid()));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- ═══ WIDGETS ═══
 DO $$ BEGIN
   CREATE POLICY widgets_select ON widgets FOR SELECT USING (EXISTS (SELECT 1 FROM dashboards d WHERE d.id = widgets.dashboard_id AND d.tenant_id = jwt_tenant_id()));
