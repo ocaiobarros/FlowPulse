@@ -7,6 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEPLOY_DIR="$SCRIPT_DIR"
 NGINX_CONTAINER="deploy-nginx-1"
 NGINX_HTML_PATH="/usr/share/nginx/html"
 
@@ -46,9 +47,12 @@ npm run build || fail "Build failed!"
 info "Build complete: $(du -sh dist | cut -f1) total"
 
 # ─── 5) Deploy to Docker Nginx container ──────────────────────────
+# The compose file mounts deploy/dist as read-only, so we copy to that path
+# and restart the container to pick up new files.
 info "Deploying to container '$NGINX_CONTAINER'..."
-docker cp "$PROJECT_DIR/dist/." "$NGINX_CONTAINER:$NGINX_HTML_PATH/" || fail "docker cp failed"
-docker exec "$NGINX_CONTAINER" nginx -s reload || fail "nginx reload failed inside container"
+rm -rf "$DEPLOY_DIR/dist"
+cp -r "$PROJECT_DIR/dist" "$DEPLOY_DIR/dist" || fail "cp to deploy/dist failed"
+docker compose -f "$DEPLOY_DIR/docker-compose.onprem.yml" restart nginx || fail "nginx restart failed"
 
 # ─── 6) Validation ────────────────────────────────────────────────
 info "Validating deployment..."
