@@ -42,7 +42,14 @@ async function zabbixProxy(connectionId: string, method: string, params: Record<
   return data.result;
 }
 
+// Methods that do NOT support limit/offset pagination in older Zabbix versions
+const NON_PAGINATED_METHODS = ["hostgroup.get", "template.get", "application.get"];
+
 async function zabbixProxyPaginated(connectionId: string, method: string, baseParams: Record<string, unknown>) {
+  if (NON_PAGINATED_METHODS.includes(method)) {
+    const result = await zabbixProxy(connectionId, method, baseParams);
+    return (result as unknown[]) || [];
+  }
   const pageSize = 500;
   let offset = 0;
   const allResults: unknown[] = [];
