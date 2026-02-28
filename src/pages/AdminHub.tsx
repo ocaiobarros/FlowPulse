@@ -56,12 +56,14 @@ import {
   Activity,
   TrendingUp,
   Zap,
+  Rocket,
 } from "lucide-react";
 import TelemetryWizard from "@/components/admin/TelemetryWizard";
 import TelemetryHealthPanel from "@/components/admin/TelemetryHealthPanel";
 import AuditLogPanel from "@/components/admin/AuditLogPanel";
 import ReservationFunnelPanel from "@/components/admin/ReservationFunnelPanel";
 import DiagnosticPanel from "@/components/admin/DiagnosticPanel";
+import MigrationChecklistPanel from "@/components/admin/MigrationChecklistPanel";
 
 interface Profile {
   id: string;
@@ -533,6 +535,9 @@ export default function AdminHub() {
               <TabsTrigger value="diagnostics" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
                 <Zap className="w-4 h-4 mr-2" /> Diagnóstico
               </TabsTrigger>
+              <TabsTrigger value="migration" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+                <Rocket className="w-4 h-4 mr-2" /> Migração
+              </TabsTrigger>
             </TabsList>
 
             {/* ─── USERS TAB ─── */}
@@ -1003,6 +1008,11 @@ export default function AdminHub() {
             {/* ─── DIAGNOSTICS TAB ─── */}
             <TabsContent value="diagnostics">
               <DiagnosticPanel tenants={tenants} selectedTenantId={selectedTenantId} />
+            </TabsContent>
+
+            {/* ─── MIGRATION TAB ─── */}
+            <TabsContent value="migration">
+              <MigrationChecklistPanel />
             </TabsContent>
           </Tabs>
         )}
