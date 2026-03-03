@@ -473,14 +473,69 @@ export function extractVMwareGuestData(d: IdracData): VirtData {
     }
   }
 
-  // Discover network interfaces
+  // Discover network interfaces (per-NIC) for VMware Guest
+  const networkInterfacesMap = new Map<string, { bytesIn: string; bytesOut: string }>();
   let totalNetIn = 0, totalNetOut = 0;
+
+  const cleanIface = (raw: string) => raw.split(",")[0].replace(/^['\"]|['\"]$/g, "").trim();
+
   for (const [name, item] of d.items) {
-    const mIn = name.match(/^Number of bytes received on interface/);
-    if (mIn && item.units?.toLowerCase()?.includes("bps")) totalNetIn += parseFloat(item.lastvalue || "0");
-    const mOut = name.match(/^Number of bytes transmitted on interface/);
-    if (mOut && item.units?.toLowerCase()?.includes("bps")) totalNetOut += parseFloat(item.lastvalue || "0");
+    const value = item.lastvalue || "";
+    if (!value) continue;
+
+    let matched = false;
+
+    // Name-based patterns
+    const rxByName = name.match(/^Number of bytes received on interface\s+(.+)$/i);
+    if (rxByName) {
+      const iface = cleanIface(rxByName[1]);
+      if (iface) {
+        const curr = networkInterfacesMap.get(iface) || { bytesIn: "", bytesOut: "" };
+        curr.bytesIn = value;
+        networkInterfacesMap.set(iface, curr);
+        totalNetIn += parseFloat(value) || 0;
+      }
+      matched = true;
+    }
+
+    const txByName = name.match(/^Number of bytes transmitted on interface\s+(.+)$/i);
+    if (txByName) {
+      const iface = cleanIface(txByName[1]);
+      if (iface) {
+        const curr = networkInterfacesMap.get(iface) || { bytesIn: "", bytesOut: "" };
+        curr.bytesOut = value;
+        networkInterfacesMap.set(iface, curr);
+        totalNetOut += parseFloat(value) || 0;
+      }
+      matched = true;
+    }
+
+    if (matched) continue;
+
+    // Key-based fallback (e.g. net.if.in[eth0], net.if.out[eth0])
+    const key = (item.key_ || "").toLowerCase();
+    const keyMatch = key.match(/^net\.if\.(in|out)\[(.+?)\]/i);
+    if (!keyMatch) continue;
+
+    const direction = keyMatch[1].toLowerCase();
+    const iface = cleanIface(keyMatch[2]);
+    if (!iface) continue;
+
+    const curr = networkInterfacesMap.get(iface) || { bytesIn: "", bytesOut: "" };
+    if (direction === "in") {
+      curr.bytesIn = value;
+      totalNetIn += parseFloat(value) || 0;
+    } else {
+      curr.bytesOut = value;
+      totalNetOut += parseFloat(value) || 0;
+    }
+    networkInterfacesMap.set(iface, curr);
   }
+
+  const networkInterfaces: VirtNetworkInterface[] = Array.from(networkInterfacesMap.entries())
+    .map(([name, val]) => ({ name, bytesIn: val.bytesIn, bytesOut: val.bytesOut }))
+    .filter((nic) => nic.bytesIn || nic.bytesOut)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Discover disk devices
   let totalDiskRead = 0, totalDiskWrite = 0;
@@ -598,7 +653,7 @@ export function extractVMwareGuestData(d: IdracData): VirtData {
     network: {
       bytesIn: vm.netIn,
       bytesOut: vm.netOut,
-      interfaces: [],
+      interfaces: networkInterfaces,
     },
     datastores,
     vms: [vm],
