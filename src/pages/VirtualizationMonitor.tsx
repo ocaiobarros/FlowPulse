@@ -660,8 +660,42 @@ export default function VirtualizationMonitor() {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-border/20 p-4 text-sm text-muted-foreground">
-                    Não foi possível separar adaptadores para este host com os itens disponíveis.
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-xl border border-border/30 p-5 relative overflow-hidden"
+                      style={{
+                        background: `linear-gradient(145deg, hsl(220 35% 8% / 0.95), hsl(225 30% 5% / 0.9))`,
+                        boxShadow: `inset 0 1px 0 hsl(0 0% 100% / 0.03)`,
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <ArrowDownToLine className="w-4 h-4" style={{ color: "hsl(142, 100%, 50%)" }} />
+                        <span className="text-xs font-mono font-bold text-foreground/80 uppercase">RX (Download)</span>
+                      </div>
+                      <div className="text-2xl font-mono-data font-black leading-none" style={{ color: "hsl(142, 100%, 50%)", textShadow: "0 0 15px hsl(142 100% 50% / 0.2)" }}>
+                        {formatToMbps(virt.network.bytesIn)}
+                      </div>
+                    </motion.div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.03 }}
+                      className="rounded-xl border border-border/30 p-5 relative overflow-hidden"
+                      style={{
+                        background: `linear-gradient(145deg, hsl(220 35% 8% / 0.95), hsl(225 30% 5% / 0.9))`,
+                        boxShadow: `inset 0 1px 0 hsl(0 0% 100% / 0.03)`,
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <ArrowUpFromLine className="w-4 h-4" style={{ color: "hsl(210, 100%, 56%)" }} />
+                        <span className="text-xs font-mono font-bold text-foreground/80 uppercase">TX (Upload)</span>
+                      </div>
+                      <div className="text-2xl font-mono-data font-black leading-none" style={{ color: "hsl(210, 100%, 56%)", textShadow: "0 0 15px hsl(210 100% 56% / 0.2)" }}>
+                        {formatToMbps(virt.network.bytesOut)}
+                      </div>
+                    </motion.div>
                   </div>
                 )}
               </motion.div>
