@@ -33,14 +33,36 @@ const LANGUAGES = [
 ];
 
 const ALLOWED_AVATAR_MIME = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const AVATAR_BUCKET_CANDIDATES = ["dashboard-assets", "flowmap-attachments"] as const;
+type AvatarBucket = (typeof AVATAR_BUCKET_CANDIDATES)[number];
 
-function extractAvatarStoragePath(url: string | null | undefined): string | null {
+type AvatarStorageLocation = {
+  bucket: AvatarBucket;
+  path: string;
+};
+
+function extractAvatarStorageLocation(url: string | null | undefined): AvatarStorageLocation | null {
   if (!url) return null;
   const cleanUrl = url.split("?")[0];
-  const marker = "/storage/v1/object/public/dashboard-assets/";
-  const markerIndex = cleanUrl.indexOf(marker);
-  if (markerIndex === -1) return null;
-  return cleanUrl.slice(markerIndex + marker.length);
+
+  for (const bucket of AVATAR_BUCKET_CANDIDATES) {
+    const marker = `/storage/v1/object/public/${bucket}/`;
+    const markerIndex = cleanUrl.indexOf(marker);
+    if (markerIndex !== -1) {
+      return {
+        bucket,
+        path: cleanUrl.slice(markerIndex + marker.length),
+      };
+    }
+  }
+
+  return null;
+}
+
+function isBucketNotFoundError(error: unknown): boolean {
+  const message = (error as { message?: string } | null)?.message?.toLowerCase() ?? "";
+  const statusCode = (error as { statusCode?: string } | null)?.statusCode;
+  return message.includes("bucket not found") || statusCode === "404";
 }
 
 export default function UserSettings() {
@@ -95,57 +117,71 @@ export default function UserSettings() {
         return;
       }
 
-      const oldAvatarPath = extractAvatarStoragePath(avatarUrl || profile?.avatar_url);
+      const oldAvatar = extractAvatarStorageLocation(avatarUrl || profile?.avatar_url);
       const extFromMime = file.type === "image/jpeg" || file.type === "image/jpg"
         ? "jpg"
         : file.type === "image/png"
           ? "png"
           : "webp";
-      const newPath = `avatars/${user.id}_${Date.now()}.${extFromMime}`;
 
-      const { data: existingFiles, error: listError } = await supabase.storage
-        .from("dashboard-assets")
-        .list("avatars", { search: user.id });
+      let selectedBucket: AvatarBucket | null = null;
+      let newPath: string | null = null;
+      let lastBucketError: unknown = null;
 
-      if (listError) {
-        console.error("[avatar] erro ao listar arquivos antigos", listError);
-      }
+      for (const bucket of AVATAR_BUCKET_CANDIDATES) {
+        const candidatePaths = [
+          `avatars/${user.id}_${Date.now()}.${extFromMime}`,
+          `${user.id}/avatars/${Date.now()}.${extFromMime}`,
+        ];
 
-      const pathsToDelete = new Set<string>();
-      if (oldAvatarPath?.startsWith("avatars/")) {
-        pathsToDelete.add(oldAvatarPath);
-      }
-      existingFiles?.forEach((f) => {
-        if (f.name.startsWith(`${user.id}_`) || f.name.startsWith(`${user.id}.`)) {
-          pathsToDelete.add(`avatars/${f.name}`);
+        let uploadedInThisBucket = false;
+
+        for (const candidatePath of candidatePaths) {
+          const { error: uploadError } = await supabase.storage
+            .from(bucket)
+            .upload(candidatePath, file, {
+              upsert: false,
+              cacheControl: "0",
+              contentType: file.type,
+            });
+
+          if (!uploadError) {
+            selectedBucket = bucket;
+            newPath = candidatePath;
+            uploadedInThisBucket = true;
+            break;
+          }
+
+          if (isBucketNotFoundError(uploadError)) {
+            lastBucketError = uploadError;
+            break;
+          }
+
+          lastBucketError = uploadError;
         }
-      });
 
-      if (pathsToDelete.size > 0) {
+        if (uploadedInThisBucket) break;
+        if (isBucketNotFoundError(lastBucketError)) {
+          console.warn(`[avatar] bucket '${bucket}' não encontrado, tentando próximo fallback`);
+          continue;
+        }
+      }
+
+      if (!selectedBucket || !newPath) {
+        throw lastBucketError ?? new Error("Nenhum bucket de avatar disponível");
+      }
+
+      if (oldAvatar?.path) {
         const { error: removeError } = await supabase.storage
-          .from("dashboard-assets")
-          .remove(Array.from(pathsToDelete));
+          .from(oldAvatar.bucket)
+          .remove([oldAvatar.path]);
 
-        if (removeError) {
+        if (removeError && !isBucketNotFoundError(removeError)) {
           console.error("[avatar] erro ao remover avatar antigo", removeError);
-          throw removeError;
         }
       }
 
-      const { error: uploadError } = await supabase.storage
-        .from("dashboard-assets")
-        .upload(newPath, file, {
-          upsert: false,
-          cacheControl: "0",
-          contentType: file.type,
-        });
-
-      if (uploadError) {
-        console.error("[avatar] erro no upload", uploadError);
-        throw uploadError;
-      }
-
-      const { data: pub } = supabase.storage.from("dashboard-assets").getPublicUrl(newPath);
+      const { data: pub } = supabase.storage.from(selectedBucket).getPublicUrl(newPath);
       const nextAvatarUrl = `${pub.publicUrl}?t=${Date.now()}`;
 
       const { error: profileError } = await supabase
@@ -164,46 +200,32 @@ export default function UserSettings() {
       toast.success(t("settings.avatarUpdated"));
     } catch (err) {
       console.error("[avatar] falha no fluxo de substituição", err);
-      toast.error(t("settings.avatarError"));
+      if (isBucketNotFoundError(err)) {
+        toast.error("Bucket de avatar não configurado no backend.");
+      } else {
+        toast.error(t("settings.avatarError"));
+      }
       setAvatarZoom(1);
     } finally {
       setAvatarLoading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
-  }, [user, avatarUrl, profile?.avatar_url, refreshProfile]);
+  }, [user, avatarUrl, profile?.avatar_url, refreshProfile, t]);
 
   const handleResetAvatar = useCallback(async () => {
     if (!user) return;
 
     setAvatarLoading(true);
     try {
-      const oldAvatarPath = extractAvatarStoragePath(avatarUrl || profile?.avatar_url);
-      const { data: existingFiles, error: listError } = await supabase.storage
-        .from("dashboard-assets")
-        .list("avatars", { search: user.id });
+      const oldAvatar = extractAvatarStorageLocation(avatarUrl || profile?.avatar_url);
 
-      if (listError) {
-        console.error("[avatar] erro ao listar para remoção", listError);
-      }
-
-      const pathsToDelete = new Set<string>();
-      if (oldAvatarPath?.startsWith("avatars/")) {
-        pathsToDelete.add(oldAvatarPath);
-      }
-      existingFiles?.forEach((f) => {
-        if (f.name.startsWith(`${user.id}_`) || f.name.startsWith(`${user.id}.`)) {
-          pathsToDelete.add(`avatars/${f.name}`);
-        }
-      });
-
-      if (pathsToDelete.size > 0) {
+      if (oldAvatar?.path) {
         const { error: removeError } = await supabase.storage
-          .from("dashboard-assets")
-          .remove(Array.from(pathsToDelete));
+          .from(oldAvatar.bucket)
+          .remove([oldAvatar.path]);
 
-        if (removeError) {
+        if (removeError && !isBucketNotFoundError(removeError)) {
           console.error("[avatar] erro ao remover do storage", removeError);
-          throw removeError;
         }
       }
 
@@ -228,7 +250,7 @@ export default function UserSettings() {
       setAvatarLoading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
-  }, [user, avatarUrl, profile?.avatar_url, refreshProfile]);
+  }, [user, avatarUrl, profile?.avatar_url, refreshProfile, t]);
 
   // Save profile
   const handleSave = useCallback(async () => {
