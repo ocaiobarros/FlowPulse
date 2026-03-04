@@ -19,8 +19,9 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
   Save, ArrowLeft, Eye, Settings2, PanelLeftClose, PanelLeft,
-  Layers, Undo2, Redo2,
+  Layers, Undo2, Redo2, Shield,
 } from "lucide-react";
+import AccessControlPanel from "@/components/access/AccessControlPanel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const DEFAULT_CONFIG: DashboardConfig = {
@@ -389,10 +390,13 @@ export default function DashboardBuilder() {
           </Button>
           <div className="h-5 w-px bg-border/50" />
           {config.id && (
-            <Button variant="ghost" size="sm" onClick={() => navigate(`/dashboard/${config.id}`)} className="gap-1.5 text-xs h-8">
-              <Eye className="w-3.5 h-3.5" />
-              Preview
-            </Button>
+            <>
+              <AccessControlPanel resourceType="dashboard" resourceId={config.id} compact />
+              <Button variant="ghost" size="sm" onClick={() => navigate(`/dashboard/${config.id}`)} className="gap-1.5 text-xs h-8">
+                <Eye className="w-3.5 h-3.5" />
+                Preview
+              </Button>
+            </>
           )}
           <Button
             size="sm"

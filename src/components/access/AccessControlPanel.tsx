@@ -1,0 +1,183 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useResourceAccess } from "@/hooks/useResourceAccess";
+import { useUserRole } from "@/hooks/useUserRole";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Shield, UserPlus, Users, Trash2, Eye, Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+interface AccessControlPanelProps {
+  resourceType: string;
+  resourceId: string | undefined;
+  /** Compact mode shows just a button that opens a dialog */
+  compact?: boolean;
+}
+
+function AccessControlContent({ resourceType, resourceId }: { resourceType: string; resourceId: string }) {
+  const { grants, isLoading, addGrant, removeGrant, updateLevel } = useResourceAccess(resourceType, resourceId);
+  const { tenantId } = useUserRole();
+  const { toast } = useToast();
+  const [granteeType, setGranteeType] = useState<"user" | "team">("user");
+  const [granteeId, setGranteeId] = useState("");
+  const [accessLevel, setAccessLevel] = useState<"viewer" | "editor">("viewer");
+
+  // Load users and teams for selection
+  const { data: users = [] } = useQuery({
+    queryKey: ["tenant-profiles", tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("id, display_name, email").eq("tenant_id", tenantId!);
+      return data ?? [];
+    },
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ["tenant-teams", tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const { data } = await supabase.from("teams").select("id, name, color").eq("tenant_id", tenantId!);
+      return data ?? [];
+    },
+  });
+
+  const handleAdd = async () => {
+    if (!granteeId) return;
+    try {
+      await addGrant.mutateAsync({ grantee_type: granteeType, grantee_id: granteeId, access_level: accessLevel });
+      toast({ title: "Acesso concedido" });
+      setGranteeId("");
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Erro", description: e.message });
+    }
+  };
+
+  const options = granteeType === "user" ? users : teams;
+  const alreadyGranted = new Set(grants.filter(g => g.grantee_type === granteeType).map(g => g.grantee_id));
+  const available = options.filter(o => !alreadyGranted.has(o.id));
+
+  return (
+    <div className="space-y-4">
+      {/* Add grant form */}
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <Select value={granteeType} onValueChange={(v) => { setGranteeType(v as "user" | "team"); setGranteeId(""); }}>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="user"><span className="flex items-center gap-1"><UserPlus className="w-3 h-3" /> Usuário</span></SelectItem>
+              <SelectItem value="team"><span className="flex items-center gap-1"><Users className="w-3 h-3" /> Time</span></SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={granteeId} onValueChange={setGranteeId}>
+            <SelectTrigger className="flex-1 min-w-0">
+              <SelectValue placeholder={granteeType === "user" ? "Selecione usuário..." : "Selecione time..."} />
+            </SelectTrigger>
+            <SelectContent>
+              {available.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {"display_name" in o ? (o.display_name || o.email || o.id) : o.name}
+                </SelectItem>
+              ))}
+              {available.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">Todos já têm acesso</div>
+              )}
+            </SelectContent>
+          </Select>
+
+          <Select value={accessLevel} onValueChange={(v) => setAccessLevel(v as "viewer" | "editor")}>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="viewer"><span className="flex items-center gap-1"><Eye className="w-3 h-3" /> Viewer</span></SelectItem>
+              <SelectItem value="editor"><span className="flex items-center gap-1"><Pencil className="w-3 h-3" /> Editor</span></SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button size="sm" onClick={handleAdd} disabled={!granteeId || addGrant.isPending}>
+            Conceder
+          </Button>
+        </div>
+      </div>
+
+      {/* Current grants */}
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground font-medium">Acessos concedidos:</p>
+        {isLoading && <p className="text-xs text-muted-foreground">Carregando...</p>}
+        {!isLoading && grants.length === 0 && (
+          <p className="text-xs text-muted-foreground italic">Nenhum acesso concedido. Somente admins e o criador podem ver este recurso.</p>
+        )}
+        {grants.map((g) => (
+          <div key={g.id} className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-card/50 px-3 py-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {g.grantee_type === "team" ? <Users className="w-3.5 h-3.5 text-primary shrink-0" /> : <UserPlus className="w-3.5 h-3.5 text-primary shrink-0" />}
+              <span className="text-sm truncate">{g.grantee_name}</span>
+              <Badge variant="outline" className="text-[10px] shrink-0">
+                {g.grantee_type === "team" ? "Time" : "Usuário"}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Select
+                value={g.access_level}
+                onValueChange={(v) => updateLevel.mutate({ grantId: g.id, access_level: v as "viewer" | "editor" })}
+              >
+                <SelectTrigger className="h-7 w-24 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeGrant.mutate(g.id)}>
+                <Trash2 className="w-3.5 h-3.5 text-destructive" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function AccessControlPanel({ resourceType, resourceId, compact }: AccessControlPanelProps) {
+  if (!resourceId) return null;
+
+  if (compact) {
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Shield className="w-4 h-4" />
+            Permissões
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-primary" />
+              Controle de Acesso
+            </DialogTitle>
+          </DialogHeader>
+          <AccessControlContent resourceType={resourceType} resourceId={resourceId} />
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <div className="border border-border rounded-lg p-4 space-y-3">
+      <h3 className="text-sm font-semibold flex items-center gap-2">
+        <Shield className="w-4 h-4 text-primary" />
+        Controle de Acesso
+      </h3>
+      <AccessControlContent resourceType={resourceType} resourceId={resourceId} />
+    </div>
+  );
+}
