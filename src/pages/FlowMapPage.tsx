@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Map, Plus, Trash2, Eye, ArrowLeft, Zap, Settings2, Radio, Maximize, Minimize, Volume2, VolumeX, Search, Download, Upload, Loader2 } from "lucide-react";
+import { Map, Plus, Trash2, Eye, ArrowLeft, Zap, Settings2, Radio, Maximize, Minimize, Volume2, VolumeX, Search, Download, Upload, Loader2, Shield } from "lucide-react";
+import AccessControlPanel from "@/components/access/AccessControlPanel";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -170,6 +171,7 @@ function MapListView() {
                   <Button variant="outline" size="sm" onClick={() => navigate(`/app/operations/flowmap/${m.id}`)} className="flex-1 gap-1 text-[10px] h-7">
                     <Eye className="w-3 h-3" />{t("flowmap.open")}
                   </Button>
+                  <AccessControlPanel resourceType="flow_map" resourceId={m.id} compact />
                   <Button variant="ghost" size="icon" onClick={() => deleteMap.mutate(m.id)} className="h-7 w-7 text-muted-foreground hover:text-neon-red">
                     <Trash2 className="w-3 h-3" />
                   </Button>
@@ -619,6 +621,7 @@ function MapEditorView({ mapId }: { mapId: string }) {
             >
               <Search className="w-3 h-3" />{t("flowmap.viability")}
             </Button>
+            <AccessControlPanel resourceType="flow_map" resourceId={mapId} compact />
             <Button
               variant="ghost"
               size="icon"

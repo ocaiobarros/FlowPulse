@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Plus, Eye, Pencil, Trash2, LayoutDashboard, ExternalLink, Download, Upload } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, LayoutDashboard, ExternalLink, Download, Upload, Shield } from "lucide-react";
+import AccessControlPanel from "@/components/access/AccessControlPanel";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -270,6 +271,9 @@ export default function ModuleDashboardList({ category, title, description, icon
                         <Button variant="outline" size="sm" onClick={() => handleExport(dash.id, dash.name)} className="gap-1 text-[10px] h-7" title="Exportar JSON">
                           <Download className="w-3 h-3" />
                         </Button>
+                        <RoleGate allowed={["admin", "editor"]}>
+                          <AccessControlPanel resourceType="dashboard" resourceId={dash.id} compact />
+                        </RoleGate>
                         <RoleGate allowed={["admin", "editor"]}>
                           <Button variant="outline" size="sm" onClick={() => navigate(viewBasePath ? `${viewBasePath}/${dash.id}` : `/builder/${dash.id}`)} className="flex-1 gap-1 text-[10px] h-7">
                             <Pencil className="w-3 h-3" /> Editar

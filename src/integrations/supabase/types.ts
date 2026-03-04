@@ -1412,6 +1412,50 @@ export type Database = {
           },
         ]
       }
+      resource_access: {
+        Row: {
+          access_level: string
+          created_at: string
+          granted_by: string | null
+          grantee_id: string
+          grantee_type: string
+          id: string
+          resource_id: string
+          resource_type: string
+          tenant_id: string
+        }
+        Insert: {
+          access_level?: string
+          created_at?: string
+          granted_by?: string | null
+          grantee_id: string
+          grantee_type: string
+          id?: string
+          resource_id: string
+          resource_type: string
+          tenant_id: string
+        }
+        Update: {
+          access_level?: string
+          created_at?: string
+          granted_by?: string | null
+          grantee_id?: string
+          grantee_type?: string
+          id?: string
+          resource_id?: string
+          resource_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resource_access_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rms_connections: {
         Row: {
           created_at: string
@@ -1957,6 +2001,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_resource_access: {
+        Args: {
+          p_resource_id: string
+          p_resource_type: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           p_role: Database["public"]["Enums"]["app_role"]
@@ -1968,6 +2021,14 @@ export type Database = {
       is_in_maintenance: {
         Args: { p_now: string; p_scope?: Json; p_tenant_id: string }
         Returns: string
+      }
+      is_resource_creator: {
+        Args: {
+          p_resource_id: string
+          p_resource_type: string
+          p_user_id: string
+        }
+        Returns: boolean
       }
       is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
       jwt_tenant_id: { Args: never; Returns: string }
