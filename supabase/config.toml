@@ -66,5 +66,8 @@ verify_jwt = false
 [functions.system-status]
 verify_jwt = false
 
+[functions.finance-import]
+verify_jwt = false
+
 [functions.main]
 verify_jwt = false
