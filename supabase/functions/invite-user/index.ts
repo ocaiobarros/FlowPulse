@@ -150,48 +150,80 @@ Deno.serve(async (req) => {
       });
     };
 
+    const findExistingAuthUserIdByEmail = async (targetEmail: string) => {
+      const normalized = targetEmail.toLowerCase();
+      let page = 1;
+
+      while (page <= 20) {
+        const { data: usersData, error: usersError } = await adminClient.auth.admin.listUsers({
+          page,
+          perPage: 1000,
+        });
+
+        if (usersError) throw usersError;
+
+        const users = usersData?.users ?? [];
+        const found = users.find((u) => (u.email || "").toLowerCase() === normalized);
+        if (found?.id) return found.id;
+
+        if (users.length < 1000) break;
+        page += 1;
+      }
+
+      return null;
+    };
+
+    const authUserExistsById = async (userId: string) => {
+      const { data, error } = await adminClient.auth.admin.getUserById(userId);
+      if (error) {
+        const status = (error as any)?.status;
+        if (status === 404) return false;
+        if ((error.message || "").toLowerCase().includes("user not found")) return false;
+        throw error;
+      }
+      return Boolean(data?.user);
+    };
+
+    const cleanupOrphanProfile = async (userId: string) => {
+      const { error: roleDeleteError } = await adminClient
+        .from("user_roles")
+        .delete()
+        .eq("user_id", userId);
+
+      if (roleDeleteError) throw roleDeleteError;
+
+      const { error: profileDeleteError } = await adminClient
+        .from("profiles")
+        .delete()
+        .eq("id", userId);
+
+      if (profileDeleteError) throw profileDeleteError;
+    };
+
     const { data: existingProfile } = await adminClient
       .from("profiles")
       .select("id, tenant_id")
       .eq("email", email)
       .maybeSingle();
 
+    const previousTenantId = existingProfile?.tenant_id ?? null;
+
+    let userId: string | null = null;
+
     if (existingProfile) {
-      const previousTenantId = existingProfile.tenant_id;
+      const profileHasAuthUser = await authUserExistsById(existingProfile.id);
 
-      await upsertProfile(existingProfile.id);
-      await ensureRoleForTenant(existingProfile.id);
-      await setAuthTenantMetadata(existingProfile.id);
-      await cleanupTenantIfEmpty(previousTenantId);
-
-      return new Response(JSON.stringify({
-        success: true,
-        user_id: existingProfile.id,
-        existing: true,
-        moved: previousTenantId !== targetTenant,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (profileHasAuthUser) {
+        userId = existingProfile.id;
+      } else {
+        await cleanupOrphanProfile(existingProfile.id);
+      }
     }
 
-    const findExistingAuthUserIdByEmail = async (targetEmail: string) => {
-      const normalized = targetEmail.toLowerCase();
-      const { data: usersData, error: usersError } = await adminClient.auth.admin.listUsers({
-        page: 1,
-        perPage: 1000,
-      });
+    if (!userId) {
+      userId = await findExistingAuthUserIdByEmail(email);
+    }
 
-      if (usersError) throw usersError;
-
-      const found = usersData?.users?.find(
-        (u) => (u.email || "").toLowerCase() === normalized,
-      );
-
-      return found?.id ?? null;
-    };
-
-    let userId = await findExistingAuthUserIdByEmail(email);
     const existingAuthUser = Boolean(userId);
 
     if (!userId) {
@@ -231,7 +263,9 @@ Deno.serve(async (req) => {
     await ensureRoleForTenant(userId);
     await setAuthTenantMetadata(userId);
 
-    if (autoTenantId && autoTenantId !== targetTenant) {
+    const movedFromAutoTenant = Boolean(autoTenantId && autoTenantId !== targetTenant);
+
+    if (movedFromAutoTenant) {
       await adminClient
         .from("user_roles")
         .delete()
@@ -241,7 +275,14 @@ Deno.serve(async (req) => {
       await cleanupTenantIfEmpty(autoTenantId);
     }
 
-    return new Response(JSON.stringify({ success: true, user_id: userId, existing: existingAuthUser }), {
+    await cleanupTenantIfEmpty(previousTenantId);
+
+    return new Response(JSON.stringify({
+      success: true,
+      user_id: userId,
+      existing: existingAuthUser,
+      moved: (previousTenantId !== null && previousTenantId !== targetTenant) || movedFromAutoTenant,
+    }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

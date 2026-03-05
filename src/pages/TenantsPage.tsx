@@ -121,22 +121,32 @@ export default function TenantsPage() {
 
   const createTenant = useMutation({
     mutationFn: async ({ name, slug }: { name: string; slug: string }) => {
-      // Try with original slug first, then with random suffix on conflict
-      const { error } = await supabase.from("tenants").insert({ name, slug });
-      if (error) {
-        if (error.message?.includes("tenants_slug_key") || error.code === "23505") {
-          // Slug conflict — retry with a unique suffix
-          const uniqueSlug = `${slug}-${crypto.randomUUID().slice(0, 6)}`;
-          const { error: retryError } = await supabase.from("tenants").insert({ name, slug: uniqueSlug });
-          if (retryError) throw retryError;
-          return;
-        }
-        throw error;
+      const normalizedName = name.trim();
+      const baseSlug = slug.trim();
+
+      const tryInsert = async (candidateSlug: string) => {
+        return await supabase
+          .from("tenants")
+          .insert({ name: normalizedName, slug: candidateSlug })
+          .select("id, name, slug, created_at, updated_at")
+          .single();
+      };
+
+      let result = await tryInsert(baseSlug);
+
+      if (result.error && (result.error.message?.includes("tenants_slug_key") || result.error.code === "23505")) {
+        const uniqueSlug = `${baseSlug}-${crypto.randomUUID().slice(0, 6)}`;
+        result = await tryInsert(uniqueSlug);
       }
+
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error("Organização criada sem retorno do backend.");
+      return result.data as Tenant;
     },
-    onSuccess: () => {
+    onSuccess: (createdTenant) => {
       qc.invalidateQueries({ queryKey: ["tenants-admin"] });
-      toast({ title: "Organização criada" });
+      setSelectedTenantId(createdTenant.id);
+      toast({ title: "Organização criada", description: `Slug: ${createdTenant.slug}` });
       setCreateDialog(false);
       setNewName("");
       setNewSlug("");

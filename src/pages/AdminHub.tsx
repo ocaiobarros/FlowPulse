@@ -90,6 +90,30 @@ interface TenantInfo {
   created_at: string;
 }
 
+async function getFunctionErrorMessage(err: any, fallback: string) {
+  const context = err?.context;
+
+  if (context?.clone && typeof context.clone === "function") {
+    try {
+      const jsonPayload = await context.clone().json();
+      if (typeof jsonPayload?.error === "string" && jsonPayload.error.trim()) return jsonPayload.error;
+      if (typeof jsonPayload?.message === "string" && jsonPayload.message.trim()) return jsonPayload.message;
+    } catch {
+      // ignore JSON parsing errors
+    }
+
+    try {
+      const textPayload = await context.clone().text();
+      if (typeof textPayload === "string" && textPayload.trim()) return textPayload;
+    } catch {
+      // ignore text parsing errors
+    }
+  }
+
+  if (typeof err?.message === "string" && err.message.trim()) return err.message;
+  return fallback;
+}
+
 export default function AdminHub() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -381,7 +405,8 @@ export default function AdminHub() {
       setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
       await fetchData();
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Erro", description: err.message || "Falha ao convidar." });
+      const description = await getFunctionErrorMessage(err, "Falha ao convidar.");
+      toast({ variant: "destructive", title: "Erro", description });
     } finally {
       setInviting(false);
     }
@@ -461,14 +486,30 @@ export default function AdminHub() {
     if (!newOrgForm.name.trim()) return;
     setCreatingOrg(true);
     try {
-      const slugValue = (newOrgForm.slug.trim() || newOrgForm.name.trim())
+      const baseSlug = (newOrgForm.slug.trim() || newOrgForm.name.trim())
         .toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
-      const { error } = await supabase.from("tenants").insert({
-        name: newOrgForm.name.trim(),
-        slug: slugValue,
+
+      const tryInsert = async (slug: string) => {
+        return await supabase
+          .from("tenants")
+          .insert({ name: newOrgForm.name.trim(), slug })
+          .select("id, name, slug")
+          .single();
+      };
+
+      let result = await tryInsert(baseSlug);
+
+      if (result.error && (result.error.code === "23505" || result.error.message?.includes("tenants_slug_key"))) {
+        result = await tryInsert(`${baseSlug}-${crypto.randomUUID().slice(0, 6)}`);
+      }
+
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error("Organização criada sem retorno do backend.");
+
+      toast({
+        title: "Organização criada",
+        description: `"${result.data.name}" foi criada com slug ${result.data.slug}.`,
       });
-      if (error) throw error;
-      toast({ title: "Organização criada", description: `"${newOrgForm.name.trim()}" foi criada com sucesso.` });
       setCreateOrgOpen(false);
       setNewOrgForm({ name: "", slug: "" });
       await fetchData();
