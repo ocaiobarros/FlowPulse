@@ -15,7 +15,10 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let stage = "init";
+
   try {
+    stage = "authenticate_caller";
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
@@ -244,11 +247,11 @@ Deno.serve(async (req) => {
       if (profileDeleteError) throw profileDeleteError;
     };
 
+    stage = "profile_lookup";
     const { data: profilesByEmail, error: profilesByEmailError } = await adminClient
       .from("profiles")
       .select("id, tenant_id")
-      .eq("email", email)
-      .order("created_at", { ascending: false })
+      .ilike("email", email)
       .limit(1);
 
     if (profilesByEmailError) {
@@ -273,6 +276,7 @@ Deno.serve(async (req) => {
     const existingAuthUser = Boolean(userId);
 
     if (!userId) {
+      stage = "create_or_resolve_auth_user";
       const userPassword = (typeof passwordRaw === "string" && passwordRaw.trim().length >= 6)
         ? passwordRaw.trim()
         : `${crypto.randomUUID().slice(0, 12)}Aa1!`;
@@ -310,6 +314,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    stage = "sync_profile_role_metadata";
     const { data: autoTenantId } = await adminClient.rpc("get_user_tenant_id", { p_user_id: userId });
 
     await upsertProfile(userId);
@@ -341,8 +346,8 @@ Deno.serve(async (req) => {
     });
   } catch (err: any) {
     const msg = err?.message || err?.toString?.() || "Internal error";
-    console.error("[invite-user] Error:", msg, JSON.stringify(err));
-    return new Response(JSON.stringify({ error: msg }), {
+    console.error("[invite-user] Error:", msg, "stage=", stage, JSON.stringify(err));
+    return new Response(JSON.stringify({ error: msg, stage }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
