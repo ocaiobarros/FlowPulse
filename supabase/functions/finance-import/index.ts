@@ -64,52 +64,132 @@ Deno.serve(async (req) => {
 
       for (const sheetName of workbook.SheetNames) {
         const sheet = workbook.Sheets[sheetName];
-        const csvText = XLSX.utils.sheet_to_csv(sheet, { FS: ";", RS: "\n", rawNumbers: true });
-        const rawLines = csvText
-          .split(/\r?\n/)
-          .map((line) => line.replace(/\uFEFF/g, ""));
-        const lines = rawLines.filter((line) => line.trim() !== "");
-        if (lines.length < 2) continue;
+        // Use sheet_to_json with header:1 for array-of-arrays with RAW values
+        const jsonRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, rawNumbers: true, defval: null });
 
-        const headerCandidate = findHeaderCandidate(lines);
-        if (!headerCandidate) {
+        if (jsonRows.length < 2) continue;
+
+        // Find header row containing month reference
+        const headerResult = findHeaderRow(jsonRows);
+        if (!headerResult) {
           allWarnings.push({
             sheet: sheetName,
             line: 1,
-            message: `Não foi possível detectar cabeçalho/mês (primeiras linhas: "${lines.slice(0, 3).join(" | ").slice(0, 140)}")`,
+            message: `Não foi possível detectar cabeçalho/mês (primeiras células: "${JSON.stringify(jsonRows[0]?.slice(0, 4)).slice(0, 140)}")`,
           });
           continue;
         }
 
-        const { headerIndex, monthReference } = headerCandidate;
-        const dataLines = lines.slice(headerIndex);
-        const debugHeader = dataLines[0]?.slice(0, 300) ?? "";
-        const debugFirst3 = dataLines.slice(1, 4).map((l, i) => `L${i+1}: "${l.slice(0, 200)}"`).join(" | ");
-        console.log(`[DEBUG] Sheet "${sheetName}" headerIdx=${headerIndex} month=${monthReference} header="${debugHeader}" ${debugFirst3}`);
-        const { rows, warnings, debugSamples, debugColumnMap } = parseCSVLines(dataLines, monthReference, tenantId, user.id, headerIndex);
-        for (const w of warnings) {
-          allWarnings.push({ sheet: sheetName, ...w });
+        const { headerRowIdx, monthReference, columnMap } = headerResult;
+        console.log(`[finance-import] Sheet "${sheetName}" headerRow=${headerRowIdx} month=${monthReference} cols=${JSON.stringify(columnMap)}`);
+
+        // Parse data rows
+        const dataRows = jsonRows.slice(headerRowIdx + 1);
+        let sheetInserted = 0;
+
+        for (let i = 0; i < dataRows.length; i++) {
+          const row = dataRows[i];
+          if (!row || row.every((c: any) => c === null || c === undefined || c === "")) continue;
+
+          // Skip "Total Geral" rows
+          const firstCell = String(row[0] ?? "").toLowerCase().trim();
+          if (firstCell.includes("total geral") || firstCell.includes("total")) continue;
+
+          const lineNum = headerRowIdx + i + 2; // 1-indexed for user display
+
+          // Extract dates
+          const prevDate = extractDate(row[columnMap.prevDateCol], monthReference);
+          const realDate = extractDate(row[columnMap.realDateCol], monthReference);
+
+          if (!prevDate && !realDate) {
+            allWarnings.push({ sheet: sheetName, line: lineNum, message: `Data inválida em ambos os lados` });
+            continue;
+          }
+
+          let lineHasValue = false;
+
+          // Previsto PAGAR
+          if (columnMap.prevPagarCol !== -1) {
+            const val = extractNumber(row[columnMap.prevPagarCol]);
+            if (val !== null && val > 0) {
+              lineHasValue = true;
+              allRows.push({
+                tenant_id: tenantId, transaction_date: prevDate || realDate,
+                scenario: "PREVISTO", type: "PAGAR", amount: val,
+                month_reference: monthReference, description: "", category: "", created_by: user.id,
+              });
+            }
+          }
+
+          // Previsto RECEBER
+          if (columnMap.prevReceberCol !== -1) {
+            const val = extractNumber(row[columnMap.prevReceberCol]);
+            if (val !== null && val > 0) {
+              lineHasValue = true;
+              allRows.push({
+                tenant_id: tenantId, transaction_date: prevDate || realDate,
+                scenario: "PREVISTO", type: "RECEBER", amount: val,
+                month_reference: monthReference, description: "", category: "", created_by: user.id,
+              });
+            }
+          }
+
+          // Realizado PAGAR (Pago)
+          if (columnMap.realPagarCol !== -1) {
+            const val = extractNumber(row[columnMap.realPagarCol]);
+            if (val !== null && val > 0) {
+              lineHasValue = true;
+              allRows.push({
+                tenant_id: tenantId, transaction_date: realDate || prevDate,
+                scenario: "REALIZADO", type: "PAGAR", amount: val,
+                month_reference: monthReference, description: "", category: "", created_by: user.id,
+              });
+            }
+          }
+
+          // Realizado RECEBER (Recebido)
+          if (columnMap.realReceberCol !== -1) {
+            const val = extractNumber(row[columnMap.realReceberCol]);
+            if (val !== null && val > 0) {
+              lineHasValue = true;
+              allRows.push({
+                tenant_id: tenantId, transaction_date: realDate || prevDate,
+                scenario: "REALIZADO", type: "RECEBER", amount: val,
+                month_reference: monthReference, description: "", category: "", created_by: user.id,
+              });
+            }
+          }
+
+          if (!lineHasValue) {
+            // Only warn for the first few
+            if (allWarnings.length < 20) {
+              const rawVals = [
+                columnMap.prevPagarCol !== -1 ? row[columnMap.prevPagarCol] : "N/A",
+                columnMap.prevReceberCol !== -1 ? row[columnMap.prevReceberCol] : "N/A",
+                columnMap.realPagarCol !== -1 ? row[columnMap.realPagarCol] : "N/A",
+                columnMap.realReceberCol !== -1 ? row[columnMap.realReceberCol] : "N/A",
+              ];
+              allWarnings.push({ sheet: sheetName, line: lineNum, message: `Sem valores válidos. Raw: [${rawVals.join(", ")}]` });
+            }
+          } else {
+            sheetInserted++;
+          }
         }
-        allRows.push(...rows);
-        if (debugSamples.length > 0) {
-          console.log(`[DEBUG] Sheet "${sheetName}" - first 5 parsed amounts:`, JSON.stringify(debugSamples));
-        }
+
+        // Log first 3 data rows for debug
+        const sampleRows = dataRows.slice(0, 3).map((r: any[], idx: number) => ({
+          row: headerRowIdx + idx + 2,
+          cells: r?.slice(0, 8),
+        }));
+        console.log(`[finance-import] Sheet "${sheetName}" samples:`, JSON.stringify(sampleRows));
+        console.log(`[finance-import] Sheet "${sheetName}" produced ${sheetInserted} valid transaction rows`);
       }
 
       if (allRows.length === 0) {
-        // Collect debug info for troubleshooting
-        const debugInfo: any = { sheets: workbook.SheetNames };
-        for (const sheetName of workbook.SheetNames) {
-          const sheet = workbook.Sheets[sheetName];
-          const csvText = XLSX.utils.sheet_to_csv(sheet, { FS: ";", RS: "\n", rawNumbers: true });
-          const sampleLines = csvText.split(/\r?\n/).slice(0, 5).map((l: string) => l.slice(0, 250));
-          debugInfo[sheetName] = sampleLines;
-        }
         return new Response(
           JSON.stringify({
             error: "Nenhuma linha válida encontrada no XLSX",
             warnings: allWarnings.slice(0, 100),
-            debug: debugInfo,
           }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
@@ -174,10 +254,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { rows, warnings, debugSamples } = parseCSVLines(lines, month_reference, tenantId, user.id, 0);
-    if (debugSamples.length > 0) {
-      console.log(`[DEBUG] CSV - first 5 parsed amounts:`, JSON.stringify(debugSamples));
-    }
+    const { rows, warnings } = parseCSVLines(lines, month_reference, tenantId, user.id);
 
     if (rows.length === 0) {
       return new Response(
@@ -224,11 +301,12 @@ Deno.serve(async (req) => {
   }
 });
 
-// ── Month detection from header ──
+// ── XLSX Header & Column Detection (works on raw arrays from sheet_to_json) ──
+
 const MONTH_MAP: Record<string, string> = {
   jan: "01", janeiro: "01",
   fev: "02", fevereiro: "02", feb: "02",
-  mar: "03", marco: "03", março: "03",
+  mar: "03", marco: "03", "março": "03",
   abr: "04", abril: "04", apr: "04",
   mai: "05", maio: "05", may: "05",
   jun: "06", junho: "06",
@@ -240,291 +318,223 @@ const MONTH_MAP: Record<string, string> = {
   dez: "12", dezembro: "12", dec: "12",
 };
 
-function detectMonthFromHeader(headerLine: string): string | null {
-  // Match patterns like "Previsto Jan/2026", "Realizado Fev/2026", "Previsto Mar/2026"
-  const norm = headerLine
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
-  const match = norm.match(/(?:previsto|realizado)\s+(\w+)\s*[\/\-]\s*(\d{4})/);
-  if (match) {
-    const monthKey = match[1];
-    const year = match[2];
-    const mm = MONTH_MAP[monthKey];
-    if (mm) return `${year}-${mm}-01`;
-  }
-
-  // Fallback: try to find any "month/year" pattern
-  for (const [key, mm] of Object.entries(MONTH_MAP)) {
-    const re = new RegExp(`\\b${key}\\s*[/\\-]\\s*(\\d{4})\\b`);
-    const m = norm.match(re);
-    if (m) return `${m[1]}-${mm}-01`;
-  }
-
-  return null;
+interface ColumnMap {
+  prevDateCol: number;
+  prevPagarCol: number;
+  prevReceberCol: number;
+  realDateCol: number;
+  realPagarCol: number;
+  realReceberCol: number;
 }
 
-function findHeaderCandidate(lines: string[]): { headerIndex: number; monthReference: string } | null {
-  const scanLimit = Math.min(lines.length, 12);
-  for (let i = 0; i < scanLimit; i++) {
-    const month = detectMonthFromHeader(lines[i]);
-    if (month) {
-      return { headerIndex: i, monthReference: month };
+function findHeaderRow(rows: any[][]): { headerRowIdx: number; monthReference: string; columnMap: ColumnMap } | null {
+  const scanLimit = Math.min(rows.length, 12);
+
+  for (let rowIdx = 0; rowIdx < scanLimit; rowIdx++) {
+    const row = rows[rowIdx];
+    if (!row) continue;
+
+    // Look for a cell containing "Previsto" + month/year
+    let monthRef: string | null = null;
+    let prevDateCol = -1;
+    let realDateCol = -1;
+    let prevPagarCol = -1;
+    let prevReceberCol = -1;
+    let realPagarCol = -1;
+    let realReceberCol = -1;
+
+    for (let colIdx = 0; colIdx < row.length; colIdx++) {
+      const cell = String(row[colIdx] ?? "").trim();
+      const norm = cell.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+      // Detect "Previsto Jan/2026" or "Realizado Fev/2026"
+      const monthMatch = norm.match(/(?:previsto|realizado)\s+(\w+)\s*[\/\-]\s*(\d{4})/);
+      if (monthMatch) {
+        const mm = MONTH_MAP[monthMatch[1]];
+        if (mm) {
+          monthRef = `${monthMatch[2]}-${mm}-01`;
+          if (norm.startsWith("previsto")) prevDateCol = colIdx;
+          else realDateCol = colIdx;
+        }
+      }
+
+      // Detect amount columns by header name
+      if (/soma de pagar/i.test(norm) || /\ba pagar\b/i.test(norm)) {
+        // Determine if this belongs to previsto or realizado based on position
+        if (realDateCol === -1 || colIdx < realDateCol) {
+          prevPagarCol = colIdx;
+        } else {
+          // This shouldn't happen with this layout, but handle it
+          prevPagarCol = colIdx;
+        }
+      }
+      if (/soma de receber/i.test(norm) || /\ba receber\b/i.test(norm)) {
+        prevReceberCol = colIdx;
+      }
+      if (/soma de pago/i.test(norm) || /\bpago\b/i.test(norm)) {
+        realPagarCol = colIdx;
+      }
+      if (/soma de recebido/i.test(norm) || /\brecebido\b/i.test(norm)) {
+        realReceberCol = colIdx;
+      }
+    }
+
+    if (monthRef && (prevPagarCol !== -1 || realPagarCol !== -1)) {
+      return {
+        headerRowIdx: rowIdx,
+        monthReference: monthRef,
+        columnMap: { prevDateCol, prevPagarCol, prevReceberCol, realDateCol, realPagarCol, realReceberCol },
+      };
     }
   }
 
   return null;
 }
 
-function detectDelimiter(headerLine: string): string {
-  const semicolons = (headerLine.match(/;/g) ?? []).length;
-  const commas = (headerLine.match(/,/g) ?? []).length;
-  if (semicolons >= commas) return ";";
-  return ",";
-}
+function extractDate(cellValue: any, fallback: string): string | null {
+  if (cellValue === null || cellValue === undefined || cellValue === "") return null;
 
-function splitDelimitedLine(line: string, delimiter: string): string[] {
-  const cols: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (!inQuotes && ch === delimiter) {
-      cols.push(current);
-      current = "";
-      continue;
-    }
-
-    current += ch;
+  // If it's a Date object (from cellDates: true)
+  if (cellValue instanceof Date) {
+    const y = cellValue.getFullYear();
+    const m = String(cellValue.getMonth() + 1).padStart(2, "0");
+    const d = String(cellValue.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
-  cols.push(current);
-  return cols;
-}
-
-// ── CSV parsing logic (shared between CSV and XLSX modes) ──
-function parseCSVLines(
-  lines: string[],
-  monthReference: string,
-  tenantId: string,
-  userId: string,
-  lineOffset = 0,
-): { rows: any[]; warnings: Array<{ line: number; message: string }>; debugSamples: Array<{ line: number; raw: string; parsed: number | null }>; debugColumnMap: Record<string, number> } {
-  const delimiter = detectDelimiter(lines[0] ?? "");
-  const rawHeaders = splitDelimitedLine(lines[0] ?? "", delimiter).map((h) => h.trim());
-  const normalizedHeaders = rawHeaders.map(normalizeHeader);
-
-  const dateIdx = findHeaderIndex(normalizedHeaders, ["data", "date", "transaction date", "data transacao"]);
-  const descIdx = findHeaderIndex(normalizedHeaders, ["descricao", "description", "desc"]);
-  const catIdx = findHeaderIndex(normalizedHeaders, ["categoria", "category", "cat"]);
-  const typeIdx = findHeaderIndex(normalizedHeaders, ["tipo", "type", "natureza"]);
-
-  const previstoIdx = findHeaderIndex(normalizedHeaders, ["previsto", "forecast", "planned", "valor previsto"]);
-  const realizadoIdx = findHeaderIndex(normalizedHeaders, ["realizado", "actual", "realized", "valor realizado"]);
-  const amountIdx = findHeaderIndex(normalizedHeaders, ["valor", "amount", "value"]);
-  const scenarioIdx = findHeaderIndex(normalizedHeaders, ["cenario", "scenario"]);
-
-  // Wide-sheet layout
-  const previstoDateIdx = findHeaderIndex(normalizedHeaders, [/^previsto\b/, /data previsto/]);
-  const realizadoDateIdx = findHeaderIndex(normalizedHeaders, [/^realizado\b/, /data realizado/]);
-  const previstoPagarIdx = findHeaderIndex(normalizedHeaders, [/soma de pagar/, /previsto.*pagar/, /a pagar/]);
-  const previstoReceberIdx = findHeaderIndex(normalizedHeaders, [/soma de receber/, /previsto.*receb/, /a receber/]);
-  const realizadoPagarIdx = findHeaderIndex(normalizedHeaders, [/soma de pago/, /realizado.*pag/, /\bpago\b/]);
-  const realizadoReceberIdx = findHeaderIndex(normalizedHeaders, [/soma de recebido/, /realizado.*receb/, /\brecebido\b/]);
-
-  const debugColumnMap: Record<string, number> = {
-    delimiter: delimiter.charCodeAt(0), previstoDateIdx, realizadoDateIdx,
-    previstoPagarIdx, previstoReceberIdx, realizadoPagarIdx, realizadoReceberIdx,
-    previstoIdx, realizadoIdx, amountIdx, dateIdx, headerCount: normalizedHeaders.length,
-  };
-  console.log(`[DEBUG] columnMap:`, JSON.stringify(debugColumnMap));
-  console.log(`[DEBUG] normalizedHeaders:`, JSON.stringify(normalizedHeaders.slice(0, 10)));
-
-  const hasDualTypeSplitColumns =
-    previstoPagarIdx !== -1 || previstoReceberIdx !== -1 || realizadoPagarIdx !== -1 || realizadoReceberIdx !== -1;
-  const hasSplitColumns = hasDualTypeSplitColumns || previstoIdx !== -1 || realizadoIdx !== -1;
-
-  const rows: any[] = [];
-  const warnings: Array<{ line: number; message: string }> = [];
-  const debugSamples: Array<{ line: number; raw: string; parsed: number | null }> = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const lineNum = lineOffset + i + 1;
-    const cols = splitDelimitedLine(lines[i], delimiter).map((c) => c.trim());
-
-    if (cols.length < 2 || cols.every((c) => c === "")) continue;
-    if (cols.some((c, idx) => idx <= 6 && normalizeHeader(c).startsWith("total geral"))) continue;
-
-    try {
-      const txDateRaw = dateIdx !== -1 ? cols[dateIdx] : monthReference;
-      const defaultTxDate = normalizeDate(txDateRaw);
-
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(defaultTxDate)) {
-        warnings.push({ line: lineNum, message: `Data inválida: "${txDateRaw}"` });
-        continue;
-      }
-
-      const desc = descIdx !== -1 ? cols[descIdx] : "";
-      const cat = catIdx !== -1 ? cols[catIdx] : "";
-
-      if (hasDualTypeSplitColumns) {
-        let lineHasValue = false;
-        const mappedColumns = [
-          { amountIdx: previstoPagarIdx, dateIdx: previstoDateIdx, scenario: "PREVISTO", type: "PAGAR", label: "previsto/pagar" },
-          { amountIdx: previstoReceberIdx, dateIdx: previstoDateIdx, scenario: "PREVISTO", type: "RECEBER", label: "previsto/receber" },
-          { amountIdx: realizadoPagarIdx, dateIdx: realizadoDateIdx, scenario: "REALIZADO", type: "PAGAR", label: "realizado/pagar" },
-          { amountIdx: realizadoReceberIdx, dateIdx: realizadoDateIdx, scenario: "REALIZADO", type: "RECEBER", label: "realizado/receber" },
-        ];
-
-        for (const colMap of mappedColumns) {
-          if (colMap.amountIdx === -1) continue;
-          const rawVal = cols[colMap.amountIdx] ?? "";
-          const val = parseAmount(rawVal);
-          if (debugSamples.length < 5 && rawVal && rawVal !== "" && rawVal !== "-") {
-            debugSamples.push({ line: lineNum, raw: rawVal, parsed: val });
-          }
-          if (val === null && rawVal && rawVal !== "" && rawVal !== "-") {
-            warnings.push({ line: lineNum, message: `Valor inválido (${colMap.label}): "${rawVal}"` });
-            continue;
-          }
-          if (val === null || val === 0) continue;
-
-          const rowDateRaw = colMap.dateIdx !== -1 ? cols[colMap.dateIdx] : defaultTxDate;
-          const rowDate = normalizeDate(rowDateRaw);
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(rowDate)) {
-            warnings.push({ line: lineNum, message: `Data inválida (${colMap.label}): "${rowDateRaw}"` });
-            continue;
-          }
-
-          lineHasValue = true;
-          rows.push({
-            tenant_id: tenantId,
-            transaction_date: rowDate,
-            scenario: colMap.scenario,
-            type: colMap.type,
-            amount: val,
-            month_reference: monthReference,
-            description: desc,
-            category: cat,
-            created_by: userId,
-          });
-        }
-
-        if (!lineHasValue) {
-          warnings.push({ line: lineNum, message: "Linha sem valores numéricos válidos" });
-        }
-        continue;
-      }
-
-      const txType = typeIdx !== -1 ? cols[typeIdx].toUpperCase() : "PAGAR";
-      const normalizedType = txType.includes("RECEBER") || txType.includes("RECEITA") || txType.includes("INCOME") ? "RECEBER" : "PAGAR";
-
-      if (hasSplitColumns) {
-        let lineHasValue = false;
-        if (previstoIdx !== -1) {
-          const rawVal = cols[previstoIdx];
-          const val = parseAmount(rawVal);
-          if (val !== null && val !== 0) {
-            lineHasValue = true;
-            rows.push({
-              tenant_id: tenantId, transaction_date: defaultTxDate, scenario: "PREVISTO",
-              type: normalizedType, amount: val, month_reference: monthReference,
-              description: desc, category: cat, created_by: userId,
-            });
-          }
-        }
-        if (realizadoIdx !== -1) {
-          const rawVal = cols[realizadoIdx];
-          const val = parseAmount(rawVal);
-          if (val !== null && val !== 0) {
-            lineHasValue = true;
-            rows.push({
-              tenant_id: tenantId, transaction_date: defaultTxDate, scenario: "REALIZADO",
-              type: normalizedType, amount: val, month_reference: monthReference,
-              description: desc, category: cat, created_by: userId,
-            });
-          }
-        }
-        if (!lineHasValue) {
-          warnings.push({ line: lineNum, message: "Linha sem valores numéricos válidos" });
-        }
-      } else {
-        const rawVal = amountIdx !== -1 ? cols[amountIdx] : "";
-        const val = parseAmount(rawVal);
-        if (val === null || val === 0) {
-          warnings.push({ line: lineNum, message: "Valor zerado ou vazio" });
-          continue;
-        }
-        let scenario = "PREVISTO";
-        if (scenarioIdx !== -1) {
-          const raw = cols[scenarioIdx].toUpperCase();
-          scenario = raw.includes("REAL") ? "REALIZADO" : "PREVISTO";
-        }
-        rows.push({
-          tenant_id: tenantId, transaction_date: defaultTxDate, scenario,
-          type: normalizedType, amount: val, month_reference: monthReference,
-          description: desc, category: cat, created_by: userId,
-        });
-      }
-    } catch (lineErr) {
-      warnings.push({ line: lineNum, message: `Erro: ${(lineErr as Error).message}` });
-    }
+  // If it's a number (Excel serial date)
+  if (typeof cellValue === "number" && cellValue > 40000 && cellValue < 60000) {
+    // Convert Excel serial to JS Date
+    const jsDate = new Date((cellValue - 25569) * 86400 * 1000);
+    const y = jsDate.getFullYear();
+    const m = String(jsDate.getMonth() + 1).padStart(2, "0");
+    const d = String(jsDate.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
-  return { rows, warnings, debugSamples, debugColumnMap };
+  const str = String(cellValue).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+
+  // dd/mm/yyyy
+  const m1 = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m1) return `${m1[3]}-${m1[2].padStart(2, "0")}-${m1[1].padStart(2, "0")}`;
+
+  // m/d/yy (Excel short format)
+  const m2 = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+  if (m2) {
+    const yy = parseInt(m2[3]);
+    const yyyy = yy < 50 ? 2000 + yy : 1900 + yy;
+    return `${yyyy}-${m2[1].padStart(2, "0")}-${m2[2].padStart(2, "0")}`;
+  }
+
+  return fallback;
+}
+
+function extractNumber(cellValue: any): number | null {
+  if (cellValue === null || cellValue === undefined) return null;
+
+  // Raw number from sheet_to_json with rawNumbers: true
+  if (typeof cellValue === "number") {
+    if (isNaN(cellValue) || !isFinite(cellValue)) return null;
+    return Math.round(cellValue * 100) / 100;
+  }
+
+  const str = String(cellValue).trim();
+  if (str === "" || str === "-" || str === "0") return null;
+
+  return parseAmount(str);
 }
 
 function parseAmount(raw: string): number | null {
   if (!raw) return null;
   let cleaned = raw.replace(/\s/g, "").replace("R$", "").replace("€", "").replace("$", "");
-  
-  // Detect format:
-  // BR: 1.234.567,89 → comma after last dot → strip dots, comma→dot
-  // US: 1,234,567.89 → dot after last comma → strip commas
-  // Simple comma decimal: 1234,56 → no dot → comma→dot
-  // Simple dot decimal: 1234.56 → no comma → keep as-is
-  
+
   const lastComma = cleaned.lastIndexOf(",");
   const lastDot = cleaned.lastIndexOf(".");
-  
+
   if (lastComma > -1 && lastDot > -1) {
     if (lastComma > lastDot) {
-      // BR format: 1.234,56 → strip dots, comma→dot
       cleaned = cleaned.replace(/\./g, "").replace(",", ".");
     } else {
-      // US format: 1,234.56 → strip commas
       cleaned = cleaned.replace(/,/g, "");
     }
   } else if (lastComma > -1 && lastDot === -1) {
-    // Only comma: 1234,56 → comma→dot
     cleaned = cleaned.replace(",", ".");
   }
-  // Only dot or no separator: keep as-is
-  
+
   const n = parseFloat(cleaned);
   return isNaN(n) ? null : Math.round(n * 100) / 100;
+}
+
+// ── Legacy CSV parsing (kept for backward compatibility) ──
+function parseCSVLines(
+  lines: string[],
+  monthReference: string,
+  tenantId: string,
+  userId: string,
+): { rows: any[]; warnings: Array<{ line: number; message: string }> } {
+  const delimiter = detectDelimiter(lines[0] ?? "");
+  const rawHeaders = splitLine(lines[0] ?? "", delimiter).map((h) => h.trim());
+  const norm = rawHeaders.map(normalizeHeader);
+
+  const dateIdx = findIdx(norm, ["data", "date"]);
+  const descIdx = findIdx(norm, ["descricao", "description"]);
+  const catIdx = findIdx(norm, ["categoria", "category"]);
+  const typeIdx = findIdx(norm, ["tipo", "type"]);
+  const amountIdx = findIdx(norm, ["valor", "amount", "value"]);
+  const scenarioIdx = findIdx(norm, ["cenario", "scenario"]);
+
+  const rows: any[] = [];
+  const warnings: Array<{ line: number; message: string }> = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitLine(lines[i], delimiter).map((c) => c.trim());
+    if (cols.length < 2 || cols.every((c) => c === "")) continue;
+
+    try {
+      const txDateRaw = dateIdx !== -1 ? cols[dateIdx] : monthReference;
+      const txDate = normalizeDate(txDateRaw);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) {
+        warnings.push({ line: i + 1, message: `Data inválida: "${txDateRaw}"` });
+        continue;
+      }
+
+      const rawVal = amountIdx !== -1 ? cols[amountIdx] : "";
+      const val = parseAmount(rawVal);
+      if (val === null || val === 0) {
+        warnings.push({ line: i + 1, message: "Valor zerado ou vazio" });
+        continue;
+      }
+
+      const txType = typeIdx !== -1 ? cols[typeIdx].toUpperCase() : "PAGAR";
+      const normalizedType = txType.includes("RECEBER") || txType.includes("RECEITA") ? "RECEBER" : "PAGAR";
+
+      let scenario = "PREVISTO";
+      if (scenarioIdx !== -1) {
+        const raw = cols[scenarioIdx].toUpperCase();
+        scenario = raw.includes("REAL") ? "REALIZADO" : "PREVISTO";
+      }
+
+      rows.push({
+        tenant_id: tenantId, transaction_date: txDate, scenario,
+        type: normalizedType, amount: val, month_reference: monthReference,
+        description: descIdx !== -1 ? cols[descIdx] : "",
+        category: catIdx !== -1 ? cols[catIdx] : "",
+        created_by: userId,
+      });
+    } catch (lineErr) {
+      warnings.push({ line: i + 1, message: `Erro: ${(lineErr as Error).message}` });
+    }
+  }
+
+  return { rows, warnings };
 }
 
 function normalizeDate(raw: string): string {
   if (!raw) return new Date().toISOString().slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-  // dd/mm/yyyy or dd-mm-yyyy
   const m = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-  // m/d/yy (Excel short format from SheetJS)
   const m2 = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
   if (m2) {
     const yy = parseInt(m2[3]);
@@ -534,21 +544,27 @@ function normalizeDate(raw: string): string {
   return raw;
 }
 
-function normalizeHeader(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[_\-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+function detectDelimiter(line: string): string {
+  return (line.match(/;/g) ?? []).length >= (line.match(/,/g) ?? []).length ? ";" : ",";
 }
 
-function findHeaderIndex(headers: string[], patterns: Array<string | RegExp>): number {
-  return headers.findIndex((header) => {
-    return patterns.some((pattern) => {
-      if (typeof pattern === "string") return header === pattern || header.includes(pattern);
-      return pattern.test(header);
-    });
-  });
+function splitLine(line: string, delim: string): string[] {
+  const cols: string[] = [];
+  let cur = "", inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; continue; }
+    if (!inQ && ch === delim) { cols.push(cur); cur = ""; continue; }
+    cur += ch;
+  }
+  cols.push(cur);
+  return cols;
+}
+
+function normalizeHeader(v: string): string {
+  return v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_\-]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function findIdx(headers: string[], patterns: string[]): number {
+  return headers.findIndex((h) => patterns.some((p) => h === p || h.includes(p)));
 }
