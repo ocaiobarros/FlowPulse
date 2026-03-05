@@ -592,6 +592,59 @@ export type Database = {
           },
         ]
       }
+      financial_transactions: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          month_reference: string
+          scenario: Database["public"]["Enums"]["finance_scenario"]
+          tenant_id: string
+          transaction_date: string
+          type: Database["public"]["Enums"]["finance_type"]
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          month_reference: string
+          scenario: Database["public"]["Enums"]["finance_scenario"]
+          tenant_id: string
+          transaction_date: string
+          type: Database["public"]["Enums"]["finance_type"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          month_reference?: string
+          scenario?: Database["public"]["Enums"]["finance_scenario"]
+          tenant_id?: string
+          transaction_date?: string
+          type?: Database["public"]["Enums"]["finance_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transactions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       flow_audit_logs: {
         Row: {
           action: string
@@ -2049,6 +2102,8 @@ export type Database = {
       cable_type: "AS" | "ASU" | "Geleado" | "ADSS" | "Outro"
       cto_capacity: "8" | "16" | "32"
       cto_status: "OK" | "DEGRADED" | "CRITICAL" | "UNKNOWN"
+      finance_scenario: "PREVISTO" | "REALIZADO"
+      finance_type: "PAGAR" | "RECEBER"
       link_status: "UP" | "DOWN" | "DEGRADED" | "UNKNOWN"
       maintenance_scope_type:
         | "tenant_all"
@@ -2192,6 +2247,8 @@ export const Constants = {
       cable_type: ["AS", "ASU", "Geleado", "ADSS", "Outro"],
       cto_capacity: ["8", "16", "32"],
       cto_status: ["OK", "DEGRADED", "CRITICAL", "UNKNOWN"],
+      finance_scenario: ["PREVISTO", "REALIZADO"],
+      finance_type: ["PAGAR", "RECEBER"],
       link_status: ["UP", "DOWN", "DEGRADED", "UNKNOWN"],
       maintenance_scope_type: [
         "tenant_all",
