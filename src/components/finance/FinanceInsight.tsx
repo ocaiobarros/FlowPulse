@@ -58,7 +58,7 @@ export default function FinanceInsight({ transactions, saldoPrevisto, saldoReali
       {insights.map((insight, i) => (
         <div key={i} className="flex items-center gap-3 py-2 px-1">
           <div className={`w-1 h-1 rounded-full shrink-0 ${dotColor[insight.type]}`} />
-          <p className="text-[10px] font-mono text-muted-foreground/50 leading-relaxed">
+          <p className="text-[11px] font-mono text-muted-foreground/70 leading-relaxed">
             {insight.text}
           </p>
         </div>

@@ -91,7 +91,7 @@ export default function FlowFinance() {
           <div className="flex items-center gap-3">
             <DollarSign className="w-5 h-5 text-emerald-400/60" />
             <div>
-              <h1 className="text-sm font-display font-bold text-foreground/80 tracking-wider">
+              <h1 className="text-sm font-display font-bold text-foreground tracking-wider">
                 <span className="text-emerald-400/80">FLOW</span>FINANCE
               </h1>
             </div>
@@ -99,7 +99,7 @@ export default function FlowFinance() {
 
           <div className="flex items-center gap-3">
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-52 bg-transparent border-border/10 rounded-lg h-9 text-xs font-mono text-muted-foreground/60">
+              <SelectTrigger className="w-52 bg-card/40 border-border/30 rounded-lg h-9 text-xs font-mono text-foreground/80">
                 <Calendar className="w-3 h-3 mr-2 text-muted-foreground/30" />
                 <SelectValue />
               </SelectTrigger>
@@ -112,7 +112,7 @@ export default function FlowFinance() {
 
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="p-2 rounded-lg text-muted-foreground/30 hover:text-muted-foreground/60 hover:bg-card/30 transition-all"
+              className="p-2 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-card/50 transition-all"
             >
               <Settings2 className="w-4 h-4" />
             </button>
@@ -127,7 +127,7 @@ export default function FlowFinance() {
             className="flex items-center gap-2"
           >
             <div className="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse" />
-            <p className="text-[9px] font-mono text-amber-400/40 tracking-wider">
+            <p className="text-[10px] font-mono text-amber-400/70 tracking-wider">
               {selectedLabel} — em curso • projeção ativa
             </p>
           </motion.div>
@@ -183,7 +183,7 @@ export default function FlowFinance() {
             >
               <div className="max-w-3xl mx-auto space-y-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-[10px] font-mono tracking-[0.3em] text-muted-foreground/40 uppercase">
+                  <h2 className="text-[11px] font-mono tracking-[0.3em] text-muted-foreground/70 uppercase">
                     Importar & Gerenciar
                   </h2>
                   <button
