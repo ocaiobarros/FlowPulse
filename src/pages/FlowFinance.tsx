@@ -4,6 +4,7 @@ import { BarChart3, ChevronLeft, ChevronRight, Settings2, X, TrendingUp } from "
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import FinanceUploadWizard from "@/components/finance/FinanceUploadWizard";
+import PressureAnalysisChart from "@/components/finance/PressureAnalysisChart";
 import {
   ResponsiveContainer,
   BarChart,
@@ -362,6 +363,9 @@ export default function FlowFinance() {
                 )}
               </ResponsiveContainer>
             </div>
+
+            {/* ── Pressure Analysis ── */}
+            <PressureAnalysisChart transactions={transactions} monthReference={selectedMonth} />
           </>
         )}
 
