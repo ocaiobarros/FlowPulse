@@ -49,15 +49,6 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    stage = "resolve_caller_tenant";
-    const { data: callerTenant } = await adminClient.rpc("get_user_tenant_id", { p_user_id: caller.id });
-    if (!callerTenant) {
-      return new Response(JSON.stringify({ error: "No tenant found for caller", stage }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     stage = "authorize_caller";
     const { data: isSuperAdmin } = await adminClient.rpc("is_super_admin", { p_user_id: caller.id });
 
@@ -72,6 +63,28 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const action = String(body?.action || "create").trim().toLowerCase();
 
+    /* ── LIST ── */
+    if (action === "list") {
+      stage = "list_tenants";
+      const { data: allTenants, error: listErr } = await adminClient
+        .from("tenants")
+        .select("id, name, slug, created_at, updated_at")
+        .order("created_at", { ascending: false });
+
+      if (listErr) {
+        return new Response(JSON.stringify({ error: listErr.message, stage }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ tenants: allTenants ?? [] }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    /* ── CREATE ── */
     if (action !== "create") {
       return new Response(JSON.stringify({ error: "Unsupported action", stage }), {
         status: 400,

@@ -92,9 +92,12 @@ export default function TenantsPage() {
   const { data: tenants = [], isLoading } = useQuery({
     queryKey: ["tenants-admin"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("tenants").select("*").order("created_at", { ascending: false });
+      const { data, error } = await supabase.functions.invoke("tenant-admin", {
+        body: { action: "list" },
+      });
       if (error) throw error;
-      return (data ?? []) as Tenant[];
+      if (data?.error) throw new Error(data.error);
+      return (data?.tenants ?? []) as Tenant[];
     },
   });
 
@@ -164,7 +167,7 @@ export default function TenantsPage() {
 
       return data.tenant as Tenant;
     },
-    onSuccess: async (createdTenant) => {
+    onSuccess: (createdTenant) => {
       qc.setQueryData<Tenant[]>(["tenants-admin"], (prev = []) => {
         const withoutCreated = prev.filter((t) => t.id !== createdTenant.id);
         return [createdTenant, ...withoutCreated];
@@ -176,16 +179,7 @@ export default function TenantsPage() {
       setNewName("");
       setNewSlug("");
 
-      await qc.invalidateQueries({ queryKey: ["tenants-admin"] });
-
-      const refreshed = qc.getQueryData<Tenant[]>(["tenants-admin"]) ?? [];
-      if (!refreshed.some((t) => t.id === createdTenant.id)) {
-        toast({
-          variant: "destructive",
-          title: "Organização criada, mas não visível na lista",
-          description: "A criação foi concluída, mas sua sessão não recebeu acesso de leitura para esse tenant ainda.",
-        });
-      }
+      qc.invalidateQueries({ queryKey: ["tenants-admin"] });
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
