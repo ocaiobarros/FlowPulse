@@ -1,39 +1,89 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { DollarSign, Calendar, Settings2, X } from "lucide-react";
+import { BarChart3, ChevronLeft, ChevronRight, Settings2, X, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import FinanceUploadWizard from "@/components/finance/FinanceUploadWizard";
-import FinanceCharts from "@/components/finance/FinanceCharts";
-import FinanceHeatmap from "@/components/finance/FinanceHeatmap";
-import CashPressureChart from "@/components/finance/CashPressureChart";
-import FinanceInsight from "@/components/finance/FinanceInsight";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  ComposedChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid,
+} from "recharts";
 
-function getMonthOptions() {
-  const months: { label: string; value: string }[] = [];
+/* ── Helpers ── */
+const fmtBRL = (v: number) =>
+  "R$ " + Math.round(v).toLocaleString("pt-BR");
+
+const tickFmt = (v: number) => {
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
+  return String(v);
+};
+
+const MONTH_NAMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+function getAvailableMonths(): { label: string; value: string; shortLabel: string }[] {
+  const months: { label: string; value: string; shortLabel: string }[] = [];
   const now = new Date();
   for (let i = 0; i < 12; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-    const label = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-    months.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value });
+    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    const shortLabel = MONTH_NAMES[d.getMonth()];
+    months.push({ label, value, shortLabel });
   }
   return months;
 }
 
-export default function FlowFinance() {
-  const monthOptions = useMemo(() => getMonthOptions(), []);
-  const [selectedMonth, setSelectedMonth] = useState(monthOptions[0].value);
-  const [showSettings, setShowSettings] = useState(false);
+/* ── Tooltip ── */
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg bg-card border border-border px-3 py-2 shadow-xl">
+      <p className="text-xs text-muted-foreground mb-1">Dia {label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center justify-between gap-4 py-0.5">
+          <span className="text-xs text-muted-foreground">{p.name}</span>
+          <span style={{ color: p.color }} className="font-semibold text-xs">
+            {typeof p.value === "number" ? fmtBRL(p.value) : "—"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  const selectedLabel = monthOptions.find(m => m.value === selectedMonth)?.label ?? "";
+/* ── Types ── */
+type ChartType = "line" | "bar" | "combined";
+type Metric = "pagamentos" | "recebimentos" | "saldo";
+
+export default function FlowFinance() {
+  const allMonths = useMemo(() => getAvailableMonths(), []);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [chartType, setChartType] = useState<ChartType>("bar");
+  const [metric, setMetric] = useState<Metric>("pagamentos");
+
+  const selectedMonth = allMonths[selectedIdx].value;
+  const selectedLabel = allMonths[selectedIdx].label;
+
+  // Show up to 3 months as tabs
+  const visibleMonths = allMonths.slice(0, 3);
+
+  const goPrev = useCallback(() => setSelectedIdx(i => Math.min(i + 1, allMonths.length - 1)), [allMonths.length]);
+  const goNext = useCallback(() => setSelectedIdx(i => Math.max(i - 1, 0)), []);
 
   const { data: transactions = [], refetch } = useQuery({
     queryKey: ["finance-transactions", selectedMonth],
@@ -48,77 +98,272 @@ export default function FlowFinance() {
     },
   });
 
-  return (
-    <div className="min-h-screen bg-background relative">
-      <div className="fixed top-0 left-1/3 w-[1000px] h-[500px] bg-emerald-500/[0.015] rounded-full blur-[200px] pointer-events-none" />
+  /* ── KPI Aggregation ── */
+  const kpis = useMemo(() => {
+    const calc = (scenario: string, type: string) =>
+      transactions
+        .filter((t: any) => t.scenario === scenario && t.type === type)
+        .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
 
-      <div className="max-w-7xl mx-auto relative z-10 px-6 md:px-10 lg:px-14 py-8 md:py-12 space-y-10">
+    const prevPagar = calc("PREVISTO", "PAGAR");
+    const realPagar = calc("REALIZADO", "PAGAR");
+    const prevReceber = calc("PREVISTO", "RECEBER");
+    const realReceber = calc("REALIZADO", "RECEBER");
+
+    const saldoPrevisto = prevReceber - prevPagar;
+    const saldoRealizado = realReceber - realPagar;
+
+    const diffPagar = realPagar - prevPagar;
+    const diffReceber = realReceber - prevReceber;
+
+    return {
+      prevPagar, realPagar, prevReceber, realReceber,
+      saldoPrevisto, saldoRealizado,
+      diffPagar, diffReceber,
+      hasData: transactions.length > 0,
+    };
+  }, [transactions]);
+
+  /* ── Chart Data ── */
+  const chartData = useMemo(() => {
+    const [y, m] = selectedMonth.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+
+    const dailyMap = new Map<number, { prevPagar: number; prevReceber: number; realPagar: number; realReceber: number }>();
+    for (const t of transactions) {
+      const d = new Date(t.transaction_date).getDate();
+      if (!dailyMap.has(d)) dailyMap.set(d, { prevPagar: 0, prevReceber: 0, realPagar: 0, realReceber: 0 });
+      const entry = dailyMap.get(d)!;
+      const amount = Number(t.amount) || 0;
+      if (t.scenario === "PREVISTO") {
+        if (t.type === "PAGAR") entry.prevPagar += amount;
+        else entry.prevReceber += amount;
+      } else {
+        if (t.type === "PAGAR") entry.realPagar += amount;
+        else entry.realReceber += amount;
+      }
+    }
+
+    const data: any[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const entry = dailyMap.get(d) || { prevPagar: 0, prevReceber: 0, realPagar: 0, realReceber: 0 };
+      data.push({
+        day: String(d),
+        prevPagar: entry.prevPagar,
+        realPagar: entry.realPagar,
+        prevReceber: entry.prevReceber,
+        realReceber: entry.realReceber,
+        saldoPrevisto: entry.prevReceber - entry.prevPagar,
+        saldoRealizado: entry.realReceber - entry.realPagar,
+      });
+    }
+    return data;
+  }, [transactions, selectedMonth]);
+
+  const metricConfig: Record<Metric, { title: string; keys: { prev: string; real: string; prevName: string; realName: string } }> = {
+    pagamentos: { title: "Pagamentos", keys: { prev: "prevPagar", real: "realPagar", prevName: "Previsto Pagar", realName: "Realizado Pago" } },
+    recebimentos: { title: "Recebimentos", keys: { prev: "prevReceber", real: "realReceber", prevName: "Previsto Receber", realName: "Realizado Recebido" } },
+    saldo: { title: "Saldo", keys: { prev: "saldoPrevisto", real: "saldoRealizado", prevName: "Saldo Previsto", realName: "Saldo Realizado" } },
+  };
+
+  const mc = metricConfig[metric];
+  const [yM, mM] = selectedMonth.split("-").map(Number);
+  const chartTitle = `${MONTH_NAMES[mM - 1]} ${yM} - ${mc.title}: Previsto vs Realizado`;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 lg:px-12 py-6 md:py-10 space-y-8">
 
         {/* ── Header ── */}
         <motion.header
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.8 }}
           className="flex items-center justify-between"
         >
-          <div className="flex items-center gap-3">
-            <DollarSign className="w-5 h-5 text-emerald-400/60" />
-            <h1 className="text-sm font-display font-bold text-foreground tracking-wider">
-              <span className="text-emerald-400/80">FLOW</span>FINANCE
-            </h1>
+          <div>
+            <div className="flex items-center gap-2.5">
+              <BarChart3 className="w-6 h-6 text-neon-blue" />
+              <h1 className="text-xl font-bold text-foreground">Dashboard Financeiro</h1>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Análise Interativa: Previsto vs Realizado ({visibleMonths.map(m => m.shortLabel.slice(0, 3)).join(", ")} {yM})
+            </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-52 bg-card/40 border-border/30 rounded-lg h-9 text-xs font-mono text-foreground/80">
-                <Calendar className="w-3 h-3 mr-2 text-muted-foreground/30" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {monthOptions.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-2 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-card/50 transition-all"
-            >
-              <Settings2 className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+          >
+            <Settings2 className="w-5 h-5" />
+          </button>
         </motion.header>
 
-        {/* ── Charts: S-Curve + Pressão de Caixa (Linhas) ── */}
-        <FinanceCharts
-          monthReference={selectedMonth}
-          transactions={transactions}
-        />
+        <hr className="border-border/30" />
 
-        {/* ── Cash Pressure Bars (Previsto / Realizado) ── */}
-        <CashPressureChart
-          transactions={transactions}
-          monthReference={selectedMonth}
-        />
+        {/* ── Month Navigation ── */}
+        <div className="rounded-2xl bg-card/40 border border-border/20 p-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={goPrev}
+              disabled={selectedIdx >= allMonths.length - 1}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition px-3 py-1.5 rounded-lg hover:bg-accent"
+            >
+              <ChevronLeft className="w-4 h-4" /> Anterior
+            </button>
 
-        {/* ── Heatmap ── */}
-        <FinanceHeatmap
-          transactions={transactions}
-          monthReference={selectedMonth}
-        />
+            <div className="flex items-center gap-2">
+              {visibleMonths.map((m, i) => (
+                <button
+                  key={m.value}
+                  onClick={() => setSelectedIdx(i)}
+                  className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
+                    selectedIdx === i
+                      ? "bg-neon-blue text-white shadow-lg shadow-neon-blue/20"
+                      : "bg-accent/50 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  {m.shortLabel}
+                </button>
+              ))}
+            </div>
 
-        {/* ── Insights ── */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-        >
-          <FinanceInsight
-            transactions={transactions}
-            monthLabel={selectedLabel}
-          />
-        </motion.div>
+            <button
+              onClick={goNext}
+              disabled={selectedIdx <= 0}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 transition px-3 py-1.5 rounded-lg hover:bg-accent"
+            >
+              Próximo <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Month Title ── */}
+        <div>
+          <h2 className="text-lg font-bold text-foreground">{selectedLabel}</h2>
+          <p className="text-sm text-muted-foreground">Resumo do desempenho financeiro</p>
+        </div>
+
+        {/* ── KPI Cards ── */}
+        {kpis.hasData ? (
+          <div className="space-y-4">
+            {/* Top row: 4 cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <KPICard label="Pagamentos Previstos" value={kpis.prevPagar} color="blue" />
+              <KPICard label="Pagamentos Realizados" value={kpis.realPagar} color="blue" diff={kpis.diffPagar} />
+              <KPICard label="Recebimentos Previstos" value={kpis.prevReceber} color="green" />
+              <KPICard label="Recebimentos Realizados" value={kpis.realReceber} color="green" diff={kpis.diffReceber} />
+            </div>
+            {/* Bottom row: 2 balance cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <BalanceCard label="Saldo Previsto (Receber - Pagar)" value={kpis.saldoPrevisto} />
+              <BalanceCard label="Saldo Realizado (Receber - Pagar)" value={kpis.saldoRealizado} />
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-card/30 border border-border/20 p-12 text-center">
+            <p className="text-muted-foreground text-sm">Nenhum dado importado para este mês</p>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="mt-3 text-neon-blue hover:underline text-sm"
+            >
+              Importar dados
+            </button>
+          </div>
+        )}
+
+        {/* ── Chart Controls + Chart ── */}
+        {kpis.hasData && (
+          <>
+            <div className="rounded-2xl bg-card/40 border border-border/20 p-5">
+              <div className="flex flex-col sm:flex-row gap-6">
+                {/* Chart Type */}
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-2">Tipo de Gráfico</p>
+                  <div className="flex gap-1">
+                    {(["line", "bar", "combined"] as ChartType[]).map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setChartType(t)}
+                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                          chartType === t
+                            ? "bg-neon-blue text-white"
+                            : "bg-accent/50 text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {t === "line" ? "Linha" : t === "bar" ? "Barra" : "Combinado"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Metric */}
+                <div>
+                  <p className="text-sm font-medium text-foreground mb-2">Métrica</p>
+                  <div className="flex flex-col gap-1">
+                    {(["pagamentos", "recebimentos", "saldo"] as Metric[]).map(m => (
+                      <button
+                        key={m}
+                        onClick={() => setMetric(m)}
+                        className={`px-4 py-1.5 rounded-lg text-sm text-left font-medium transition-all ${
+                          metric === m
+                            ? "bg-neon-blue text-white"
+                            : "bg-accent/30 text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {m === "pagamentos" ? "Pagamentos" : m === "recebimentos" ? "Recebimentos" : "Saldo"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Chart */}
+            <div className="rounded-2xl bg-card/40 border border-border/20 p-6">
+              <h3 className="text-base font-bold text-foreground mb-6">{chartTitle}</h3>
+              <ResponsiveContainer width="100%" height={380}>
+                {chartType === "bar" ? (
+                  <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={tickFmt} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} width={55} axisLine={false} tickLine={false} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12 }}
+                      formatter={(val: string) => <span className="text-muted-foreground">{val}</span>}
+                    />
+                    <Bar dataKey={mc.keys.prev} name={mc.keys.prevName} fill="hsl(var(--neon-blue))" radius={[3, 3, 0, 0]} barSize={10} />
+                    <Bar dataKey={mc.keys.real} name={mc.keys.realName} fill="hsl(35, 100%, 55%)" radius={[3, 3, 0, 0]} barSize={10} />
+                  </BarChart>
+                ) : chartType === "line" ? (
+                  <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={tickFmt} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} width={55} axisLine={false} tickLine={false} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12 }}
+                      formatter={(val: string) => <span className="text-muted-foreground">{val}</span>}
+                    />
+                    <Line type="monotone" dataKey={mc.keys.prev} name={mc.keys.prevName} stroke="hsl(var(--neon-blue))" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                    <Line type="monotone" dataKey={mc.keys.real} name={mc.keys.realName} stroke="hsl(35, 100%, 55%)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  </LineChart>
+                ) : (
+                  <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={tickFmt} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} width={55} axisLine={false} tickLine={false} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12 }}
+                      formatter={(val: string) => <span className="text-muted-foreground">{val}</span>}
+                    />
+                    <Bar dataKey={mc.keys.prev} name={mc.keys.prevName} fill="hsl(var(--neon-blue))" radius={[3, 3, 0, 0]} barSize={10} opacity={0.7} />
+                    <Line type="monotone" dataKey={mc.keys.real} name={mc.keys.realName} stroke="hsl(35, 100%, 55%)" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                  </ComposedChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          </>
+        )}
 
         {/* ── Settings Panel ── */}
         <AnimatePresence>
@@ -128,21 +373,18 @@ export default function FlowFinance() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.3 }}
-              className="fixed inset-x-0 bottom-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/10 p-6 md:p-8 max-h-[60vh] overflow-y-auto"
+              className="fixed inset-x-0 bottom-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/20 p-6 md:p-8 max-h-[60vh] overflow-y-auto"
             >
               <div className="max-w-3xl mx-auto space-y-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-[11px] font-mono tracking-[0.3em] text-muted-foreground/70 uppercase">
-                    Importar & Gerenciar
-                  </h2>
+                  <h2 className="text-sm font-semibold text-foreground">Importar & Gerenciar</h2>
                   <button
                     onClick={() => setShowSettings(false)}
-                    className="p-1.5 rounded-md text-muted-foreground/40 hover:text-foreground/60 hover:bg-muted/20 transition-all"
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-
                 <FinanceUploadWizard
                   monthReference={selectedMonth}
                   onImportComplete={() => { refetch(); }}
@@ -151,13 +393,48 @@ export default function FlowFinance() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        <div className="pt-10">
-          <p className="text-[8px] font-mono text-muted-foreground/10 tracking-[0.4em] uppercase text-center">
-            FlowPulse Intelligence
-          </p>
-        </div>
       </div>
     </div>
+  );
+}
+
+/* ── Sub-components ── */
+
+function KPICard({ label, value, color, diff }: { label: string; value: number; color: "blue" | "green"; diff?: number }) {
+  const borderColor = color === "blue" ? "border-neon-blue/30" : "border-emerald-500/30";
+  const bgTint = color === "blue" ? "bg-neon-blue/5" : "bg-emerald-500/5";
+  const textColor = color === "blue" ? "text-neon-blue" : "text-emerald-400";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`rounded-xl border ${borderColor} ${bgTint} p-5`}
+    >
+      <p className="text-sm text-muted-foreground mb-2">{label}</p>
+      <p className={`text-2xl font-bold ${textColor}`}>{fmtBRL(value)}</p>
+      {diff !== undefined && diff !== 0 && (
+        <div className={`flex items-center gap-1 mt-2 text-xs ${diff > 0 ? "text-emerald-400" : "text-red-400"}`}>
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>{diff > 0 ? "+" : ""}{fmtBRL(diff)}</span>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function BalanceCard({ label, value }: { label: string; value: number }) {
+  const isNeg = value < 0;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`rounded-xl border p-5 ${isNeg ? "border-red-500/20 bg-red-500/5" : "border-emerald-500/20 bg-emerald-500/5"}`}
+    >
+      <p className="text-sm text-muted-foreground mb-2">{label}</p>
+      <p className={`text-2xl font-bold ${isNeg ? "text-red-400" : "text-emerald-400"}`}>
+        {isNeg ? "-" : ""}R$ {Math.abs(Math.round(value)).toLocaleString("pt-BR")}
+      </p>
+    </motion.div>
   );
 }
