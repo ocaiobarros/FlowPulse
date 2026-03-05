@@ -1,12 +1,12 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
-  Cell,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -29,9 +29,12 @@ function MinimalTooltip({ active, payload, label }: any) {
     <div className="rounded-lg bg-background/95 backdrop-blur-xl border border-border/30 px-3 py-2 shadow-2xl">
       <p className="font-mono text-muted-foreground/50 text-[8px] uppercase tracking-wider mb-1">{label}</p>
       {payload.map((p: any) => (
-        <p key={p.dataKey} style={{ color: p.color || p.fill }} className="font-mono font-semibold text-xs">
-          {typeof p.value === "number" ? fmt(p.value) : "—"}
-        </p>
+        <div key={p.dataKey} className="flex items-center justify-between gap-3 py-0.5">
+          <span className="text-[9px] font-mono text-muted-foreground/70">{p.name}</span>
+          <span style={{ color: p.color || p.fill }} className="font-mono font-semibold text-xs">
+            {typeof p.value === "number" ? fmt(p.value) : "—"}
+          </span>
+        </div>
       ))}
     </div>
   );
@@ -62,8 +65,8 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
     },
   });
 
-  // Build S-Curve data
-  const chartData = (() => {
+  // S-Curve data
+  const chartData = useMemo(() => {
     const map = new Map<string, any>();
     for (const row of raw) {
       const dateStr = new Date(row.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -75,7 +78,6 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
         entry.realizado = Number(row.running_balance);
       }
     }
-    // Add confidence band (±10%)
     const entries = Array.from(map.values());
     for (const e of entries) {
       if (e.previsto !== undefined) {
@@ -85,26 +87,44 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
       }
     }
     return entries;
-  })();
+  }, [raw]);
 
-  // Build Waterfall: TOP impact events by CATEGORY, not by day
-  const waterfallData = (() => {
-    if (!transactions.length) return [];
-    const catMap = new Map<string, { receber: number; pagar: number }>();
+  // Pressure line chart: daily Pressão Operacional (PREVISTO) + Pressão Financeira (REALIZADO)
+  const pressureLineData = useMemo(() => {
+    const [y, m] = monthReference.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+
+    const dailyMap = new Map<number, { prevPagar: number; prevReceber: number; realPagar: number; realReceber: number }>();
+
     for (const t of transactions) {
-      const cat = t.category || t.description || "Outros";
-      if (!catMap.has(cat)) catMap.set(cat, { receber: 0, pagar: 0 });
-      const entry = catMap.get(cat)!;
-      if (t.type === "RECEBER") entry.receber += Number(t.amount);
-      else entry.pagar += Number(t.amount);
+      const d = new Date(t.transaction_date).getDate();
+      if (!dailyMap.has(d)) dailyMap.set(d, { prevPagar: 0, prevReceber: 0, realPagar: 0, realReceber: 0 });
+      const entry = dailyMap.get(d)!;
+      const amount = Number(t.amount) || 0;
+      if (t.scenario === "PREVISTO") {
+        if (t.type === "PAGAR") entry.prevPagar += amount;
+        else entry.prevReceber += amount;
+      } else {
+        if (t.type === "PAGAR") entry.realPagar += amount;
+        else entry.realReceber += amount;
+      }
     }
-    // Net impact per category
-    const impacts = [...catMap.entries()]
-      .map(([cat, v]) => ({ category: cat.length > 18 ? cat.slice(0, 16) + "…" : cat, impact: v.receber - v.pagar }))
-      .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
-      .slice(0, 7); // Top 7 impacts
-    return impacts;
-  })();
+
+    const data: { day: string; pressaoOperacional: number | null; pressaoFinanceira: number | null }[] = [];
+    const hasPrev = transactions.some((t: any) => t.scenario === "PREVISTO");
+    const hasReal = transactions.some((t: any) => t.scenario === "REALIZADO");
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const entry = dailyMap.get(d) || { prevPagar: 0, prevReceber: 0, realPagar: 0, realReceber: 0 };
+      data.push({
+        day: String(d).padStart(2, "0"),
+        pressaoOperacional: hasPrev ? Math.round((entry.prevPagar - entry.prevReceber) * 100) / 100 : null,
+        pressaoFinanceira: hasReal ? Math.round((entry.realPagar - entry.realReceber) * 100) / 100 : null,
+      });
+    }
+
+    return { data, hasPrev, hasReal };
+  }, [transactions, monthReference]);
 
   const hasRealizado = chartData.some(d => d.realizado !== undefined);
   const isOutsideBand = chartData.some(d =>
@@ -121,7 +141,7 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
     );
   }
 
-  if (chartData.length === 0 && waterfallData.length === 0) {
+  if (chartData.length === 0 && transactions.length === 0) {
     return (
       <div className="rounded-2xl bg-card/20 p-16 text-center">
         <p className="text-[10px] font-mono text-muted-foreground/30 uppercase tracking-[0.3em]">
@@ -133,7 +153,7 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-      {/* ── S-Curve: 60% width ── */}
+      {/* ── S-Curve: Tendência de Saldo (60%) ── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -177,71 +197,18 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
                 <stop offset="100%" stopColor="hsl(142,100%,50%)" stopOpacity={0} />
               </linearGradient>
             </defs>
-             <XAxis
-              dataKey="date"
-              tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }}
-              axisLine={false}
-              tickLine={false}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              tickFormatter={tickFmt}
-              tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }}
-              width={50}
-              axisLine={false}
-              tickLine={false}
-            />
+            <XAxis dataKey="date" tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+            <YAxis tickFormatter={tickFmt} tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }} width={50} axisLine={false} tickLine={false} />
             <Tooltip content={<MinimalTooltip />} />
             <ReferenceLine y={0} stroke="hsl(215,15%,15%)" strokeWidth={0.5} />
 
-            {/* Confidence band - upper boundary */}
-            <Area
-              type="monotone"
-              dataKey="bandHigh"
-              stroke="none"
-              fill="url(#bandFill)"
-              dot={false}
-              activeDot={false}
-              isAnimationActive={false}
-            />
-            {/* Confidence band - lower boundary (fills background) */}
-            <Area
-              type="monotone"
-              dataKey="bandLow"
-              stroke="hsl(210,100%,56%)"
-              strokeWidth={0.5}
-              strokeDasharray="2 4"
-              strokeOpacity={0.15}
-              fill="hsl(var(--background))"
-              dot={false}
-              activeDot={false}
-              isAnimationActive={false}
-            />
+            <Area type="monotone" dataKey="bandHigh" stroke="none" fill="url(#bandFill)" dot={false} activeDot={false} isAnimationActive={false} />
+            <Area type="monotone" dataKey="bandLow" stroke="hsl(210,100%,56%)" strokeWidth={0.5} strokeDasharray="2 4" strokeOpacity={0.15} fill="hsl(var(--background))" dot={false} activeDot={false} isAnimationActive={false} />
 
-            {/* Previsto */}
-            <Area
-              type="monotone"
-              dataKey="previsto"
-              stroke="hsl(210,100%,56%)"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              strokeOpacity={0.5}
-              fill="none"
-              dot={false}
-              activeDot={{ r: 3, strokeWidth: 1, fill: "hsl(210,100%,56%)" }}
-            />
+            <Area type="monotone" dataKey="previsto" stroke="hsl(210,100%,56%)" strokeWidth={1.5} strokeDasharray="4 3" strokeOpacity={0.5} fill="none" dot={false} activeDot={{ r: 3, strokeWidth: 1, fill: "hsl(210,100%,56%)" }} />
 
-            {/* Realizado */}
             {hasRealizado && (
-              <Area
-                type="monotone"
-                dataKey="realizado"
-                stroke="hsl(142,100%,50%)"
-                strokeWidth={2}
-                fill="url(#realizadoFill)"
-                dot={false}
-                activeDot={{ r: 4, strokeWidth: 1.5, fill: "hsl(142,100%,50%)" }}
-              />
+              <Area type="monotone" dataKey="realizado" stroke="hsl(142,100%,50%)" strokeWidth={2} fill="url(#realizadoFill)" dot={false} activeDot={{ r: 4, strokeWidth: 1.5, fill: "hsl(142,100%,50%)" }} />
             )}
           </AreaChart>
         </ResponsiveContainer>
@@ -253,7 +220,7 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
         )}
       </motion.div>
 
-      {/* ── Waterfall: Top Impact Events (40% width) ── */}
+      {/* ── Pressão de Caixa Diária (Line Chart - 40%) ── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -262,64 +229,75 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
       >
         <div className="mb-6">
           <h3 className="text-[10px] font-mono tracking-[0.3em] text-muted-foreground/70 uppercase">
-            Impacto por Categoria
+            Pressão de Caixa Diária
           </h3>
           <p className="text-[9px] font-mono text-muted-foreground/50 mt-1">
-            Top {waterfallData.length} eventos — O que moveu o caixa
+            PAGAR − RECEBER por dia • Positivo = pressão
           </p>
         </div>
 
-        {waterfallData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart
-              data={waterfallData}
-              layout="vertical"
-              margin={{ top: 0, right: 5, left: 0, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="impactPositive" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="hsl(142,80%,40%)" stopOpacity={0.7} />
-                  <stop offset="100%" stopColor="hsl(142,80%,45%)" stopOpacity={0.9} />
-                </linearGradient>
-                <linearGradient id="impactNegative" x1="1" y1="0" x2="0" y2="0">
-                  <stop offset="0%" stopColor="hsl(0,70%,45%)" stopOpacity={0.7} />
-                  <stop offset="100%" stopColor="hsl(0,70%,50%)" stopOpacity={0.9} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                type="number"
-                tickFormatter={tickFmt}
-                tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="category"
-                tick={{ fontSize: 9, fill: "hsl(210,20%,65%)" }}
-                width={90}
-                axisLine={false}
-                tickLine={false}
-              />
+        <div className="flex items-center gap-4 mb-4 text-[9px] font-mono text-muted-foreground/60">
+          {pressureLineData.hasPrev && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 inline-block rounded" style={{ backgroundColor: "hsl(210,100%,56%)", borderTop: "1px dashed hsl(210,100%,56%)" }} />
+              Operacional (Previsto)
+            </span>
+          )}
+          {pressureLineData.hasReal && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 bg-emerald-400 inline-block rounded" />
+              Financeira (Realizado)
+            </span>
+          )}
+        </div>
+
+        {pressureLineData.data.length > 0 ? (
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={pressureLineData.data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+              <XAxis dataKey="day" tick={{ fontSize: 8, fill: "hsl(210,20%,60%)" }} axisLine={false} tickLine={false} interval={1} />
+              <YAxis tickFormatter={tickFmt} tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }} width={50} axisLine={false} tickLine={false} />
               <Tooltip content={<MinimalTooltip />} />
-              <ReferenceLine x={0} stroke="hsl(215,15%,15%)" strokeWidth={0.5} />
-              <Bar dataKey="impact" name="Impacto" radius={[0, 4, 4, 0]} barSize={18}>
-                {waterfallData.map((entry, i) => (
-                  <Cell
-                    key={i}
-                    fill={entry.impact >= 0 ? "url(#impactPositive)" : "url(#impactNegative)"}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
+              <ReferenceLine y={0} stroke="hsl(215,15%,20%)" strokeWidth={1} label="" />
+
+              {pressureLineData.hasPrev && (
+                <Line
+                  type="monotone"
+                  dataKey="pressaoOperacional"
+                  name="Pressão Operacional"
+                  stroke="hsl(210,100%,56%)"
+                  strokeWidth={2}
+                  strokeDasharray="4 3"
+                  dot={false}
+                  activeDot={{ r: 3, strokeWidth: 1, fill: "hsl(210,100%,56%)" }}
+                  connectNulls
+                />
+              )}
+
+              {pressureLineData.hasReal && (
+                <Line
+                  type="monotone"
+                  dataKey="pressaoFinanceira"
+                  name="Pressão Financeira"
+                  stroke="hsl(142,100%,50%)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 1.5, fill: "hsl(142,100%,50%)" }}
+                  connectNulls
+                />
+              )}
+            </LineChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-[280px] flex items-center justify-center">
+          <div className="h-[260px] flex items-center justify-center">
             <p className="text-[9px] font-mono text-muted-foreground/20 uppercase tracking-wider">
               Sem transações para análise
             </p>
           </div>
         )}
+
+        <p className="text-[8px] font-mono text-muted-foreground/30 text-center mt-2 tracking-wider">
+          Acima de zero = despesa &gt; receita • Abaixo = receita &gt; despesa
+        </p>
       </motion.div>
     </div>
   );

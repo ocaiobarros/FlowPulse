@@ -7,7 +7,6 @@ import FinanceUploadWizard from "@/components/finance/FinanceUploadWizard";
 import FinanceCharts from "@/components/finance/FinanceCharts";
 import FinanceHeatmap from "@/components/finance/FinanceHeatmap";
 import CashPressureChart from "@/components/finance/CashPressureChart";
-import ExecutiveKPICards from "@/components/finance/ExecutiveKPICards";
 import FinanceInsight from "@/components/finance/FinanceInsight";
 import {
   Select,
@@ -49,40 +48,13 @@ export default function FlowFinance() {
     },
   });
 
-  const summary = useMemo(() => {
-    const calc = (scenario: string, type: string) =>
-      transactions
-        .filter((t: any) => t.scenario === scenario && t.type === type)
-        .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
-    return {
-      previstoReceber: calc("PREVISTO", "RECEBER"),
-      previstoPagar: calc("PREVISTO", "PAGAR"),
-      realizadoReceber: calc("REALIZADO", "RECEBER"),
-      realizadoPagar: calc("REALIZADO", "PAGAR"),
-    };
-  }, [transactions]);
-
-  const saldoPrevisto = summary.previstoReceber - summary.previstoPagar;
-  const saldoRealizado = summary.realizadoReceber - summary.realizadoPagar;
-  const hasRealizado = summary.realizadoReceber > 0 || summary.realizadoPagar > 0;
-
-  const varianciaPercent = saldoPrevisto !== 0
-    ? ((saldoRealizado - saldoPrevisto) / Math.abs(saldoPrevisto)) * 100 : 0;
-  const avgBurn = summary.realizadoPagar > 0 ? summary.realizadoPagar : summary.previstoPagar;
-  const runwayCaixa = avgBurn > 0 ? saldoRealizado / avgBurn : 0;
-  const totalPrevisto = summary.previstoReceber + summary.previstoPagar;
-  const totalRealizado = summary.realizadoReceber + summary.realizadoPagar;
-  const assertividade = totalPrevisto > 0
-    ? Math.max(0, 100 - Math.abs(((totalRealizado - totalPrevisto) / totalPrevisto) * 100)) : 0;
-
   return (
     <div className="min-h-screen bg-background relative">
-      {/* Extremely subtle ambient */}
       <div className="fixed top-0 left-1/3 w-[1000px] h-[500px] bg-emerald-500/[0.015] rounded-full blur-[200px] pointer-events-none" />
 
       <div className="max-w-7xl mx-auto relative z-10 px-6 md:px-10 lg:px-14 py-8 md:py-12 space-y-10">
 
-        {/* ── Header: Ultra minimal ── */}
+        {/* ── Header ── */}
         <motion.header
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -91,11 +63,9 @@ export default function FlowFinance() {
         >
           <div className="flex items-center gap-3">
             <DollarSign className="w-5 h-5 text-emerald-400/60" />
-            <div>
-              <h1 className="text-sm font-display font-bold text-foreground tracking-wider">
-                <span className="text-emerald-400/80">FLOW</span>FINANCE
-              </h1>
-            </div>
+            <h1 className="text-sm font-display font-bold text-foreground tracking-wider">
+              <span className="text-emerald-400/80">FLOW</span>FINANCE
+            </h1>
           </div>
 
           <div className="flex items-center gap-3">
@@ -120,38 +90,13 @@ export default function FlowFinance() {
           </div>
         </motion.header>
 
-        {/* ── Status line for incomplete months ── */}
-        {!hasRealizado && transactions.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center gap-2"
-          >
-            <div className="w-1 h-1 rounded-full bg-amber-400/60 animate-pulse" />
-            <p className="text-[10px] font-mono text-amber-400/70 tracking-wider">
-              {selectedLabel} — em curso • projeção ativa
-            </p>
-          </motion.div>
-        )}
-
-        {/* ── KPI Cards ── */}
-        <ExecutiveKPICards
-          data={{
-            saldoAcumulado: hasRealizado ? saldoRealizado : saldoPrevisto,
-            varianciaPercent,
-            runwayCaixa: Math.max(0, runwayCaixa),
-            assertividade,
-            hasRealizado,
-          }}
-        />
-
-        {/* ── Charts ── */}
+        {/* ── Charts: S-Curve + Pressão de Caixa (Linhas) ── */}
         <FinanceCharts
           monthReference={selectedMonth}
           transactions={transactions}
         />
 
-        {/* ── Cash Pressure ── */}
+        {/* ── Cash Pressure Bars (Previsto / Realizado) ── */}
         <CashPressureChart
           transactions={transactions}
           monthReference={selectedMonth}
@@ -163,7 +108,7 @@ export default function FlowFinance() {
           monthReference={selectedMonth}
         />
 
-        {/* ── Insights — minimal, inline ── */}
+        {/* ── Insights ── */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -171,14 +116,11 @@ export default function FlowFinance() {
         >
           <FinanceInsight
             transactions={transactions}
-            saldoPrevisto={saldoPrevisto}
-            saldoRealizado={saldoRealizado}
-            hasRealizado={hasRealizado}
             monthLabel={selectedLabel}
           />
         </motion.div>
 
-        {/* ── Settings Panel (slide-in) ── */}
+        {/* ── Settings Panel ── */}
         <AnimatePresence>
           {showSettings && (
             <motion.div
@@ -210,7 +152,6 @@ export default function FlowFinance() {
           )}
         </AnimatePresence>
 
-        {/* Footer */}
         <div className="pt-10">
           <p className="text-[8px] font-mono text-muted-foreground/10 tracking-[0.4em] uppercase text-center">
             FlowPulse Intelligence
