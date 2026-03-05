@@ -64,6 +64,7 @@ import TelemetryHealthPanel from "@/components/admin/TelemetryHealthPanel";
 import AuditLogPanel from "@/components/admin/AuditLogPanel";
 import ReservationFunnelPanel from "@/components/admin/ReservationFunnelPanel";
 import DiagnosticPanel from "@/components/admin/DiagnosticPanel";
+import BackendHealthPanel from "@/components/admin/BackendHealthPanel";
 import MigrationChecklistPanel from "@/components/admin/MigrationChecklistPanel";
 import TeamsPanel from "@/components/admin/TeamsPanel";
 
@@ -1070,7 +1071,8 @@ export default function AdminHub() {
             </TabsContent>
 
             {/* ─── DIAGNOSTICS TAB ─── */}
-            <TabsContent value="diagnostics">
+            <TabsContent value="diagnostics" className="space-y-6">
+              <BackendHealthPanel />
               <DiagnosticPanel tenants={tenants} selectedTenantId={selectedTenantId} />
             </TabsContent>
 
