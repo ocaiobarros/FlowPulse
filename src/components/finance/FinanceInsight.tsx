@@ -1,51 +1,68 @@
-import { Lightbulb, TrendingUp, AlertTriangle } from "lucide-react";
+import { useMemo } from "react";
 
 interface InsightProps {
   transactions: any[];
-  saldoPrevisto: number;
-  saldoRealizado: number;
-  hasRealizado: boolean;
   monthLabel: string;
 }
 
-export default function FinanceInsight({ transactions, saldoPrevisto, saldoRealizado, hasRealizado, monthLabel }: InsightProps) {
-  const insights: { text: string; type: "info" | "positive" | "warning" }[] = [];
+function fmtShort(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
 
-  if (!hasRealizado) {
-    insights.push({
-      text: `${monthLabel} em curso — projeção baseada no previsto.`,
-      type: "warning",
-    });
-  } else {
-    const variancia = saldoPrevisto !== 0 ? ((saldoRealizado - saldoPrevisto) / Math.abs(saldoPrevisto)) * 100 : 0;
-    if (variancia >= 0) {
-      insights.push({
-        text: `Realizado superou o previsto em ${variancia.toFixed(1)}%. Saldo: ${fmtShort(saldoRealizado)}.`,
-        type: "positive",
-      });
-    } else {
-      insights.push({
-        text: `Realizado ficou ${Math.abs(variancia).toFixed(1)}% abaixo. Saldo: ${fmtShort(saldoRealizado)} vs ${fmtShort(saldoPrevisto)}.`,
-        type: "warning",
+export default function FinanceInsight({ transactions, monthLabel }: InsightProps) {
+  const insights = useMemo(() => {
+    const result: { text: string; type: "info" | "positive" | "warning" }[] = [];
+
+    if (transactions.length === 0) return result;
+
+    const calc = (scenario: string, type: string) =>
+      transactions
+        .filter((t: any) => t.scenario === scenario && t.type === type)
+        .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+
+    const prevPagar = calc("PREVISTO", "PAGAR");
+    const prevReceber = calc("PREVISTO", "RECEBER");
+    const realPagar = calc("REALIZADO", "PAGAR");
+    const realReceber = calc("REALIZADO", "RECEBER");
+
+    const pressaoOp = prevPagar - prevReceber;
+    const pressaoFin = realPagar - realReceber;
+    const hasReal = realPagar > 0 || realReceber > 0;
+    const hasPrev = prevPagar > 0 || prevReceber > 0;
+
+    if (hasPrev) {
+      result.push({
+        text: `Pressão Operacional (Previsto): ${fmtShort(pressaoOp)} — ${pressaoOp > 0 ? "saída líquida planejada" : "entrada líquida planejada"}.`,
+        type: pressaoOp > 0 ? "warning" : "positive",
       });
     }
 
-    // Top category
-    const catMap = new Map<string, number>();
-    for (const t of transactions.filter((t: any) => t.scenario === "REALIZADO")) {
-      const cat = t.category || "Sem categoria";
-      const sign = t.type === "RECEBER" ? 1 : -1;
-      catMap.set(cat, (catMap.get(cat) || 0) + Number(t.amount) * sign);
+    if (hasReal) {
+      result.push({
+        text: `Pressão Financeira (Realizado): ${fmtShort(pressaoFin)} — ${pressaoFin > 0 ? "saída líquida efetiva" : "entrada líquida efetiva"}.`,
+        type: pressaoFin > 0 ? "warning" : "positive",
+      });
     }
-    const sorted = [...catMap.entries()].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-    if (sorted.length > 0) {
-      const [topCat, topVal] = sorted[0];
-      insights.push({
-        text: `Maior impacto: "${topCat}" — ${fmtShort(topVal)}.`,
+
+    if (hasPrev && hasReal) {
+      const desvio = pressaoFin - pressaoOp;
+      result.push({
+        text: `Desvio: ${fmtShort(desvio)} — ${desvio > 0 ? "pressão real maior que a planejada" : "pressão real menor que a planejada"}.`,
+        type: desvio > 0 ? "warning" : "positive",
+      });
+    }
+
+    if (!hasPrev && !hasReal) {
+      result.push({
+        text: `${monthLabel} — sem dados importados.`,
         type: "info",
       });
     }
-  }
+
+    return result;
+  }, [transactions, monthLabel]);
+
+  if (insights.length === 0) return null;
 
   const dotColor = {
     info: "bg-neon-blue/50",
@@ -65,8 +82,4 @@ export default function FinanceInsight({ transactions, saldoPrevisto, saldoReali
       ))}
     </div>
   );
-}
-
-function fmtShort(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
