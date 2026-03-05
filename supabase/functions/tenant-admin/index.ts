@@ -17,15 +17,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let stage = "init";
+
   try {
+    stage = "validate_auth_header";
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization" }), {
+      return new Response(JSON.stringify({ error: "Missing authorization", stage }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    stage = "create_clients";
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
@@ -34,9 +38,10 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
+    stage = "authenticate_caller";
     const { data: { user: caller } } = await callerClient.auth.getUser();
     if (!caller) {
-      return new Response(JSON.stringify({ error: "Not authenticated" }), {
+      return new Response(JSON.stringify({ error: "Not authenticated", stage }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -44,35 +49,31 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+    stage = "resolve_caller_tenant";
     const { data: callerTenant } = await adminClient.rpc("get_user_tenant_id", { p_user_id: caller.id });
     if (!callerTenant) {
-      return new Response(JSON.stringify({ error: "No tenant found for caller" }), {
+      return new Response(JSON.stringify({ error: "No tenant found for caller", stage }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const [{ data: isAdmin }, { data: isSuperAdmin }] = await Promise.all([
-      adminClient.rpc("has_role", {
-        p_user_id: caller.id,
-        p_tenant_id: callerTenant,
-        p_role: "admin",
-      }),
-      adminClient.rpc("is_super_admin", { p_user_id: caller.id }),
-    ]);
+    stage = "authorize_caller";
+    const { data: isSuperAdmin } = await adminClient.rpc("is_super_admin", { p_user_id: caller.id });
 
-    if (!isAdmin && !isSuperAdmin) {
-      return new Response(JSON.stringify({ error: "Admin role required" }), {
+    if (!isSuperAdmin) {
+      return new Response(JSON.stringify({ error: "Super admin role required", stage }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    stage = "parse_request";
     const body = await req.json();
     const action = String(body?.action || "create").trim().toLowerCase();
 
     if (action !== "create") {
-      return new Response(JSON.stringify({ error: "Unsupported action" }), {
+      return new Response(JSON.stringify({ error: "Unsupported action", stage }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -82,7 +83,7 @@ Deno.serve(async (req) => {
     const slugInput = String(body?.slug || name).trim();
 
     if (!name) {
-      return new Response(JSON.stringify({ error: "name is required" }), {
+      return new Response(JSON.stringify({ error: "name is required", stage }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -90,13 +91,14 @@ Deno.serve(async (req) => {
 
     const baseSlug = slugify(slugInput || name);
     if (!baseSlug) {
-      return new Response(JSON.stringify({ error: "slug is invalid" }), {
+      return new Response(JSON.stringify({ error: "slug is invalid", stage }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const tryInsert = async (candidateSlug: string) => {
+      stage = `insert_tenant:${candidateSlug}`;
       return await adminClient
         .from("tenants")
         .insert({ name, slug: candidateSlug })
@@ -111,20 +113,52 @@ Deno.serve(async (req) => {
     }
 
     if (result.error || !result.data) {
-      return new Response(JSON.stringify({ error: result.error?.message || "Failed to create tenant" }), {
+      return new Response(JSON.stringify({
+        error: result.error?.message || "Failed to create tenant",
+        code: result.error?.code || null,
+        details: result.error?.details || null,
+        hint: result.error?.hint || null,
+        stage,
+      }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ success: true, tenant: result.data }), {
+    stage = "verify_created_tenant";
+    const { data: persistedTenant, error: persistedTenantError } = await adminClient
+      .from("tenants")
+      .select("id, name, slug, created_at, updated_at")
+      .eq("id", result.data.id)
+      .maybeSingle();
+
+    if (persistedTenantError || !persistedTenant) {
+      return new Response(JSON.stringify({
+        error: persistedTenantError?.message || "Tenant was not persisted",
+        code: persistedTenantError?.code || null,
+        details: persistedTenantError?.details || null,
+        hint: persistedTenantError?.hint || null,
+        stage,
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true, tenant: persistedTenant }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
     const msg = err?.message || err?.toString?.() || "Internal error";
-    console.error("[tenant-admin] Error:", msg, JSON.stringify(err));
-    return new Response(JSON.stringify({ error: msg }), {
+    console.error("[tenant-admin] Error:", msg, "stage=", stage, JSON.stringify(err));
+    return new Response(JSON.stringify({
+      error: msg,
+      code: err?.code || null,
+      details: err?.details || null,
+      hint: err?.hint || null,
+      stage,
+    }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
