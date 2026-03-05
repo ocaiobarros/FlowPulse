@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import FinanceUploadWizard from "@/components/finance/FinanceUploadWizard";
 import FinanceCharts from "@/components/finance/FinanceCharts";
+import FinanceHeatmap from "@/components/finance/FinanceHeatmap";
 import ExecutiveKPICards from "@/components/finance/ExecutiveKPICards";
 import FinanceInsight from "@/components/finance/FinanceInsight";
 import {
@@ -82,35 +83,35 @@ export default function FlowFinance() {
 
   return (
     <div className="min-h-screen bg-background relative">
-      {/* Subtle ambient glow */}
-      <div className="fixed top-0 left-1/3 w-[800px] h-[400px] bg-emerald-500/3 rounded-full blur-[150px] pointer-events-none" />
-      <div className="fixed bottom-0 right-1/4 w-[600px] h-[300px] bg-neon-blue/3 rounded-full blur-[120px] pointer-events-none" />
+      {/* Ambient glow */}
+      <div className="fixed top-0 left-1/4 w-[900px] h-[450px] bg-emerald-500/[0.03] rounded-full blur-[180px] pointer-events-none" />
+      <div className="fixed bottom-0 right-1/4 w-[700px] h-[350px] bg-neon-blue/[0.03] rounded-full blur-[150px] pointer-events-none" />
 
-      <div className="max-w-6xl mx-auto relative z-10 p-4 md:p-6 lg:p-8 space-y-6">
+      <div className="max-w-7xl mx-auto relative z-10 p-5 md:p-8 lg:p-10 space-y-8">
         {/* ── Header ── */}
         <motion.header
-          initial={{ opacity: 0, y: -15 }}
+          initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.6 }}
           className="flex items-center justify-between flex-wrap gap-4"
         >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <DollarSign className="w-5 h-5 text-emerald-400" />
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/15">
+              <DollarSign className="w-6 h-6 text-emerald-400" />
             </div>
             <div>
-              <h1 className="text-lg font-display font-bold text-foreground tracking-tight">
+              <h1 className="text-xl font-display font-bold text-foreground tracking-tight">
                 <span className="text-emerald-400">FLOW</span>FINANCE
               </h1>
-              <p className="text-[10px] text-muted-foreground font-mono tracking-wider">
-                Executive Dashboard — Previsto vs Realizado
+              <p className="text-[10px] text-muted-foreground/50 font-mono tracking-[0.2em] mt-0.5">
+                EXECUTIVE COMMAND CENTER
               </p>
             </div>
           </div>
 
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-56 bg-card/80 border-border/30 backdrop-blur-sm rounded-xl">
-              <Calendar className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+            <SelectTrigger className="w-60 bg-card/60 border-border/20 backdrop-blur-sm rounded-xl h-11">
+              <Calendar className="w-3.5 h-3.5 mr-2 text-muted-foreground/50" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -121,16 +122,17 @@ export default function FlowFinance() {
           </Select>
         </motion.header>
 
-        {/* ── Month Status Banner (when no realizado) ── */}
+        {/* ── Month Status Banner ── */}
         {!hasRealizado && transactions.length > 0 && (
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="rounded-xl border border-amber-500/20 bg-amber-500/5 backdrop-blur-sm px-5 py-3 flex items-center gap-3"
+            className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] backdrop-blur-sm px-5 py-3.5 flex items-center gap-3"
           >
-            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <p className="text-xs font-mono text-amber-300/90">
-              <span className="font-bold">{selectedLabel}:</span> Em curso — Aguardando dados Realizados. Exibindo projeções com base no Previsto.
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <p className="text-xs font-mono text-amber-300/80">
+              <span className="font-bold text-amber-300">{selectedLabel}:</span>{" "}
+              Em curso — Aguardando dados Realizados. Exibindo projeções com base no Previsto.
             </p>
           </motion.div>
         )}
@@ -148,20 +150,26 @@ export default function FlowFinance() {
 
         {/* ── Charts ── */}
         <motion.div
-          initial={{ opacity: 0, y: 15 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
+          transition={{ delay: 0.25, duration: 0.6 }}
         >
           <FinanceCharts monthReference={selectedMonth} />
         </motion.div>
 
+        {/* ── Heatmap ── */}
+        <FinanceHeatmap
+          transactions={transactions}
+          monthReference={selectedMonth}
+        />
+
         {/* ── Insights ── */}
         <motion.div
-          initial={{ opacity: 0, y: 15 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, duration: 0.5 }}
         >
-          <h2 className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+          <h2 className="text-[10px] font-mono font-bold text-muted-foreground/60 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             Insights Automáticos
           </h2>
@@ -174,13 +182,13 @@ export default function FlowFinance() {
           />
         </motion.div>
 
-        {/* ── Upload Wizard ── */}
+        {/* ── Upload ── */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45 }}
         >
-          <h2 className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-[0.2em] mb-3">
+          <h2 className="text-[10px] font-mono font-bold text-muted-foreground/60 uppercase tracking-[0.2em] mb-4">
             Importar Dados
           </h2>
           <FinanceUploadWizard
@@ -197,13 +205,13 @@ export default function FlowFinance() {
         >
           <button
             onClick={() => setShowTable(!showTable)}
-            className="flex items-center gap-2 text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-[0.2em] mb-3 hover:text-foreground transition-colors group"
+            className="flex items-center gap-2 text-[10px] font-mono font-bold text-muted-foreground/50 uppercase tracking-[0.2em] mb-3 hover:text-foreground/70 transition-colors group"
           >
             <TableIcon className="w-3.5 h-3.5" />
             Transações do Período ({transactions.length})
             {showTable
-              ? <ChevronUp className="w-3 h-3 group-hover:text-foreground" />
-              : <ChevronDown className="w-3 h-3 group-hover:text-foreground" />
+              ? <ChevronUp className="w-3 h-3" />
+              : <ChevronDown className="w-3 h-3" />
             }
           </button>
 
@@ -217,54 +225,54 @@ export default function FlowFinance() {
                 className="overflow-hidden"
               >
                 {isLoading ? (
-                  <div className="rounded-2xl bg-card/60 border border-border/20 p-8 text-center">
+                  <div className="rounded-2xl bg-card/40 border border-border/10 p-8 text-center">
                     <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
                   </div>
                 ) : transactions.length === 0 ? (
-                  <div className="rounded-2xl bg-card/60 border border-border/20 p-8 text-center">
-                    <DollarSign className="w-10 h-10 text-muted-foreground/15 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Nenhuma transação neste período</p>
+                  <div className="rounded-2xl bg-card/40 border border-border/10 p-10 text-center">
+                    <DollarSign className="w-10 h-10 text-muted-foreground/10 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground/50">Nenhuma transação neste período</p>
                   </div>
                 ) : (
-                  <div className="rounded-2xl bg-card/60 backdrop-blur-xl border border-border/20 overflow-x-auto shadow-lg">
+                  <div className="rounded-2xl bg-card/40 backdrop-blur-xl border border-border/10 overflow-x-auto shadow-xl">
                     <table className="w-full text-[11px] font-mono">
                       <thead>
-                        <tr className="text-muted-foreground uppercase border-b border-border/15 text-[9px] tracking-wider">
-                          <th className="text-left p-3">Data</th>
-                          <th className="text-left p-3">Cenário</th>
-                          <th className="text-left p-3">Tipo</th>
-                          <th className="text-left p-3">Descrição</th>
-                          <th className="text-left p-3">Categoria</th>
-                          <th className="text-right p-3">Valor</th>
+                        <tr className="text-muted-foreground/50 uppercase border-b border-border/10 text-[9px] tracking-wider">
+                          <th className="text-left p-3.5">Data</th>
+                          <th className="text-left p-3.5">Cenário</th>
+                          <th className="text-left p-3.5">Tipo</th>
+                          <th className="text-left p-3.5">Descrição</th>
+                          <th className="text-left p-3.5">Categoria</th>
+                          <th className="text-right p-3.5">Valor</th>
                         </tr>
                       </thead>
                       <tbody>
                         {transactions.map((t: any) => (
-                          <tr key={t.id} className="border-t border-border/8 hover:bg-muted/10 transition-colors">
-                            <td className="p-3 text-foreground/80">
+                          <tr key={t.id} className="border-t border-border/5 hover:bg-muted/10 transition-colors">
+                            <td className="p-3.5 text-foreground/70">
                               {new Date(t.transaction_date).toLocaleDateString("pt-BR")}
                             </td>
-                            <td className="p-3">
+                            <td className="p-3.5">
                               <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
                                 t.scenario === "PREVISTO"
-                                  ? "bg-neon-blue/10 text-neon-blue border border-neon-blue/20"
-                                  : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                  ? "bg-neon-blue/10 text-neon-blue border border-neon-blue/15"
+                                  : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/15"
                               }`}>
                                 {t.scenario}
                               </span>
                             </td>
-                            <td className="p-3">
+                            <td className="p-3.5">
                               <span className={`${t.type === "RECEBER" ? "text-emerald-400" : "text-amber-400"}`}>
                                 {t.type}
                               </span>
                             </td>
-                            <td className="p-3 text-foreground/70 max-w-[200px] truncate">
+                            <td className="p-3.5 text-foreground/50 max-w-[200px] truncate">
                               {t.description || "—"}
                             </td>
-                            <td className="p-3 text-muted-foreground">
+                            <td className="p-3.5 text-muted-foreground/50">
                               {t.category || "—"}
                             </td>
-                            <td className="p-3 text-right font-bold text-foreground/90">
+                            <td className="p-3.5 text-right font-bold text-foreground/80">
                               {Number(t.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                             </td>
                           </tr>
@@ -278,9 +286,9 @@ export default function FlowFinance() {
           </AnimatePresence>
         </motion.div>
 
-        <div className="text-center py-6">
-          <p className="text-[9px] font-mono text-muted-foreground/30 tracking-widest uppercase">
-            FlowPulse • FlowFinance Executive Dashboard
+        <div className="text-center py-8">
+          <p className="text-[9px] font-mono text-muted-foreground/20 tracking-[0.3em] uppercase">
+            FlowPulse • Executive Command Center
           </p>
         </div>
       </div>

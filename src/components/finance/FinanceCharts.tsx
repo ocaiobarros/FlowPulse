@@ -9,7 +9,6 @@ import {
   Cell,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   Legend,
   ReferenceLine,
@@ -33,7 +32,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <p className="font-mono text-muted-foreground mb-2 text-[10px] uppercase tracking-wider">{label}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ color: p.color || p.fill }} className="font-semibold text-sm">
-          {p.name}: {fmt(p.value)}
+          {p.name}: {typeof p.value === "number" ? fmt(p.value) : "—"}
         </p>
       ))}
     </div>
@@ -81,16 +80,27 @@ export default function FinanceCharts({ monthReference }: Props) {
         entry.variance = Number(row.variance);
       }
     }
-    return Array.from(map.values());
+
+    // Add tolerance band (±10%) around Previsto
+    const entries = Array.from(map.values());
+    for (const entry of entries) {
+      if (entry.previsto !== undefined) {
+        const margin = Math.abs(entry.previsto) * 0.1;
+        entry.toleranceHigh = entry.previsto + margin;
+        entry.toleranceLow = entry.previsto - margin;
+      }
+    }
+
+    return entries;
   })();
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {[0, 1].map(i => (
-          <div key={i} className="rounded-2xl bg-card/60 border border-border/20 p-6 h-[340px] animate-pulse">
-            <div className="h-3 w-32 bg-muted rounded mb-4" />
-            <div className="h-full bg-muted/30 rounded-xl" />
+          <div key={i} className="rounded-2xl bg-card/40 border border-border/10 p-6 h-[380px] animate-pulse">
+            <div className="h-3 w-32 bg-muted rounded mb-6" />
+            <div className="h-full bg-muted/20 rounded-xl" />
           </div>
         ))}
       </div>
@@ -99,8 +109,8 @@ export default function FinanceCharts({ monthReference }: Props) {
 
   if (chartData.length === 0) {
     return (
-      <div className="rounded-2xl bg-card/60 border border-border/20 p-8 text-center">
-        <BarChart3 className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
+      <div className="rounded-2xl bg-card/40 border border-border/10 p-12 text-center">
+        <BarChart3 className="w-10 h-10 text-muted-foreground/15 mx-auto mb-3" />
         <p className="text-xs text-muted-foreground">Importe dados para visualizar os gráficos</p>
       </div>
     );
@@ -108,41 +118,114 @@ export default function FinanceCharts({ monthReference }: Props) {
 
   const hasRealizado = chartData.some(d => d.realizado !== undefined);
 
+  // Filter waterfall to only significant deviations (> 5% of max absolute value)
+  const waterfallKey = hasRealizado ? "netRealizado" : "netPrevisto";
+  const maxAbsFlow = Math.max(...chartData.map(d => Math.abs(d[waterfallKey] ?? 0)), 1);
+  const significanceThreshold = maxAbsFlow * 0.03;
+  const waterfallData = chartData.filter(d => {
+    const val = d[waterfallKey] ?? 0;
+    return Math.abs(val) >= significanceThreshold;
+  });
+
+  // Check if realizado is outside tolerance band
+  const hasBreachPoints = chartData.some(d =>
+    d.realizado !== undefined && d.toleranceHigh !== undefined &&
+    (d.realizado > d.toleranceHigh || d.realizado < d.toleranceLow)
+  );
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      {/* S-Curve: Area Chart */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* S-Curve with Confidence Band */}
       <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.5 }}
-        className="rounded-2xl bg-card/60 backdrop-blur-xl border border-border/20 p-5 shadow-lg"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="rounded-2xl bg-card/40 backdrop-blur-xl border border-border/10 p-6 shadow-xl"
       >
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-[0.2em]">
-            S-Curve — Saldo Acumulado
-          </h3>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-[11px] font-mono font-bold text-foreground/90 uppercase tracking-[0.15em]">
+                S-Curve — Saldo Acumulado
+              </h3>
+              <p className="text-[9px] text-muted-foreground/60 font-mono mt-0.5">
+                Corredor de confiança ±10%
+              </p>
+            </div>
+          </div>
+          {hasBreachPoints && (
+            <span className="text-[9px] font-mono px-2 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+              ⚠ FORA DO CORREDOR
+            </span>
+          )}
         </div>
-        <ResponsiveContainer width="100%" height={280}>
+
+        <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
             <defs>
               <linearGradient id="gradPrevisto" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="hsl(210, 100%, 56%)" stopOpacity={0.3} />
+                <stop offset="0%" stopColor="hsl(210, 100%, 56%)" stopOpacity={0.25} />
                 <stop offset="100%" stopColor="hsl(210, 100%, 56%)" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gradRealizado" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="hsl(142, 100%, 50%)" stopOpacity={0.35} />
+                <stop offset="0%" stopColor="hsl(142, 100%, 50%)" stopOpacity={0.3} />
                 <stop offset="100%" stopColor="hsl(142, 100%, 50%)" stopOpacity={0.02} />
               </linearGradient>
+              <linearGradient id="gradTolerance" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="hsl(210, 100%, 56%)" stopOpacity={0.08} />
+                <stop offset="100%" stopColor="hsl(210, 100%, 56%)" stopOpacity={0.03} />
+              </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 20%, 12%)" opacity={0.5} />
-            <XAxis dataKey="date" tick={{ fontSize: 9, fill: "hsl(215, 15%, 40%)" }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={tickFmt} tick={{ fontSize: 9, fill: "hsl(215, 15%, 40%)" }} width={50} axisLine={false} tickLine={false} />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 9, fill: "hsl(215, 15%, 35%)" }}
+              axisLine={false}
+              tickLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tickFormatter={tickFmt}
+              tick={{ fontSize: 9, fill: "hsl(215, 15%, 35%)" }}
+              width={55}
+              axisLine={false}
+              tickLine={false}
+            />
             <Tooltip content={<CustomTooltip />} />
             <Legend
-              wrapperStyle={{ fontSize: 10, paddingTop: 8 }}
-              formatter={(v: string) => <span className="text-muted-foreground text-[10px]">{v}</span>}
+              wrapperStyle={{ fontSize: 10, paddingTop: 12 }}
+              formatter={(v: string) => <span className="text-muted-foreground/70 text-[10px]">{v}</span>}
             />
+
+            {/* Tolerance band - upper */}
+            <Area
+              type="monotone"
+              dataKey="toleranceHigh"
+              name="Teto (+10%)"
+              stroke="none"
+              fill="url(#gradTolerance)"
+              dot={false}
+              activeDot={false}
+              legendType="none"
+            />
+            {/* Tolerance band - lower */}
+            <Area
+              type="monotone"
+              dataKey="toleranceLow"
+              name="Piso (-10%)"
+              stroke="hsl(210, 100%, 56%)"
+              strokeWidth={0.5}
+              strokeDasharray="2 4"
+              strokeOpacity={0.3}
+              fill="hsl(var(--background))"
+              dot={false}
+              activeDot={false}
+              legendType="none"
+            />
+
+            {/* Previsto line */}
             <Area
               type="monotone"
               dataKey="previsto"
@@ -154,6 +237,8 @@ export default function FinanceCharts({ monthReference }: Props) {
               dot={false}
               activeDot={{ r: 4, strokeWidth: 2, fill: "hsl(210, 100%, 56%)" }}
             />
+
+            {/* Realizado line */}
             {hasRealizado && (
               <Area
                 type="monotone"
@@ -168,49 +253,86 @@ export default function FinanceCharts({ monthReference }: Props) {
             )}
           </AreaChart>
         </ResponsiveContainer>
+
+        {/* Inline micro-insight */}
+        {!hasRealizado && (
+          <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/10">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <p className="text-[9px] font-mono text-amber-300/80">
+              Projeção baseada no Previsto — Linha tracejada indica estimativa
+            </p>
+          </div>
+        )}
       </motion.div>
 
-      {/* Waterfall: Bar Chart with Gain/Loss colors */}
+      {/* Waterfall: Significant Deviations Only */}
       <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="rounded-2xl bg-card/60 backdrop-blur-xl border border-border/20 p-5 shadow-lg"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.1 }}
+        className="rounded-2xl bg-card/40 backdrop-blur-xl border border-border/10 p-6 shadow-xl"
       >
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-4 h-4 text-amber-400" />
-          <h3 className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-[0.2em]">
-            Waterfall — Fluxo Diário {hasRealizado ? "(Realizado)" : "(Previsto)"}
-          </h3>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-amber-500/10">
+              <BarChart3 className="w-4 h-4 text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-[11px] font-mono font-bold text-foreground/90 uppercase tracking-[0.15em]">
+                Waterfall — {hasRealizado ? "Desvios Realizados" : "Fluxo Previsto"}
+              </h3>
+              <p className="text-[9px] text-muted-foreground/60 font-mono mt-0.5">
+                Apenas movimentações significativas
+              </p>
+            </div>
+          </div>
+          <span className="text-[9px] font-mono text-muted-foreground/40">
+            {waterfallData.length}/{chartData.length} dias
+          </span>
         </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={waterfallData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
             <defs>
               <linearGradient id="barGain" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="hsl(142, 80%, 45%)" stopOpacity={0.9} />
-                <stop offset="100%" stopColor="hsl(142, 80%, 35%)" stopOpacity={0.7} />
+                <stop offset="100%" stopColor="hsl(142, 80%, 35%)" stopOpacity={0.6} />
               </linearGradient>
               <linearGradient id="barLoss" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="hsl(0, 75%, 50%)" stopOpacity={0.9} />
-                <stop offset="100%" stopColor="hsl(0, 75%, 40%)" stopOpacity={0.7} />
+                <stop offset="100%" stopColor="hsl(0, 75%, 40%)" stopOpacity={0.6} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(215, 20%, 12%)" opacity={0.5} />
-            <XAxis dataKey="date" tick={{ fontSize: 9, fill: "hsl(215, 15%, 40%)" }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={tickFmt} tick={{ fontSize: 9, fill: "hsl(215, 15%, 40%)" }} width={50} axisLine={false} tickLine={false} />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 9, fill: "hsl(215, 15%, 35%)" }}
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+              angle={-35}
+              textAnchor="end"
+              height={45}
+            />
+            <YAxis
+              tickFormatter={tickFmt}
+              tick={{ fontSize: 9, fill: "hsl(215, 15%, 35%)" }}
+              width={55}
+              axisLine={false}
+              tickLine={false}
+            />
             <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine y={0} stroke="hsl(215, 15%, 25%)" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="hsl(215, 15%, 20%)" strokeWidth={1} />
             <Bar
-              dataKey={hasRealizado ? "netRealizado" : "netPrevisto"}
+              dataKey={waterfallKey}
               name="Fluxo Líquido"
               radius={[4, 4, 0, 0]}
             >
-              {chartData.map((entry, index) => {
-                const val = hasRealizado ? entry.netRealizado : entry.netPrevisto;
+              {waterfallData.map((entry, index) => {
+                const val = entry[waterfallKey] ?? 0;
                 return (
                   <Cell
                     key={`cell-${index}`}
-                    fill={(val ?? 0) >= 0 ? "url(#barGain)" : "url(#barLoss)"}
+                    fill={val >= 0 ? "url(#barGain)" : "url(#barLoss)"}
                   />
                 );
               })}
@@ -221,7 +343,7 @@ export default function FinanceCharts({ monthReference }: Props) {
                 name="Variância"
                 radius={[4, 4, 0, 0]}
                 fill="hsl(43, 100%, 50%)"
-                opacity={0.35}
+                opacity={0.3}
               />
             )}
           </BarChart>
