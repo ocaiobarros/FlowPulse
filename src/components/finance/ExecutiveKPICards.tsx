@@ -70,7 +70,7 @@ export default function ExecutiveKPICards({ data }: { data: KPIData }) {
               card.status === "negative" ? "bg-red-500/20" : "bg-border/10"
             }`} />
 
-            <p className="text-[9px] font-mono tracking-[0.3em] text-muted-foreground/40 mb-4">
+            <p className="text-[10px] font-mono tracking-[0.3em] text-muted-foreground/70 mb-4">
               {card.label}
             </p>
 
@@ -85,7 +85,7 @@ export default function ExecutiveKPICards({ data }: { data: KPIData }) {
 
             <div className="flex items-center gap-1.5 mt-4">
               <TrendIcon className={`w-3 h-3 ${statusColor}`} />
-              <span className="text-[9px] font-mono text-muted-foreground/30 uppercase tracking-wider">
+              <span className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider">
                 {card.sub}
               </span>
             </div>

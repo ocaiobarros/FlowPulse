@@ -65,10 +65,10 @@ export default function FinanceHeatmap({ transactions, monthReference }: Props) 
       className="rounded-2xl bg-card/20 backdrop-blur-sm p-6"
     >
       <div className="flex items-center justify-between mb-5">
-        <h3 className="text-[9px] font-mono tracking-[0.3em] text-muted-foreground/40 uppercase">
+        <h3 className="text-[10px] font-mono tracking-[0.3em] text-muted-foreground/70 uppercase">
           Mapa Térmico
         </h3>
-        <div className="flex items-center gap-3 text-[7px] font-mono text-muted-foreground/25">
+        <div className="flex items-center gap-3 text-[8px] font-mono text-muted-foreground/50">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: "hsla(0,70%,45%,0.6)" }} />
             déficit
@@ -87,7 +87,7 @@ export default function FinanceHeatmap({ transactions, monthReference }: Props) 
       {/* Weekday headers */}
       <div className="grid grid-cols-7 gap-1 mb-1">
         {weekdays.map((d, i) => (
-          <div key={i} className="text-center text-[7px] font-mono text-muted-foreground/20 uppercase">
+          <div key={i} className="text-center text-[8px] font-mono text-muted-foreground/50 uppercase">
             {d}
           </div>
         ))}
@@ -109,7 +109,7 @@ export default function FinanceHeatmap({ transactions, monthReference }: Props) 
                 }}
               >
                 {!cell.empty && (
-                  <span className="text-[8px] font-mono text-foreground/50">
+                  <span className="text-[9px] font-mono text-foreground/70">
                     {cell.day}
                   </span>
                 )}

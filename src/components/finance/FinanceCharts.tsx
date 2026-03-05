@@ -142,7 +142,7 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-[9px] font-mono tracking-[0.3em] text-muted-foreground/40 uppercase">
+            <h3 className="text-[10px] font-mono tracking-[0.3em] text-muted-foreground/70 uppercase">
               Tendência de Saldo
             </h3>
             {isOutsideBand && (
@@ -151,7 +151,7 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-4 text-[8px] font-mono text-muted-foreground/30">
+          <div className="flex items-center gap-4 text-[9px] font-mono text-muted-foreground/60">
             <span className="flex items-center gap-1.5">
               <span className="w-4 h-px bg-[hsl(210,100%,56%)] inline-block" style={{ borderTop: "1px dashed hsl(210,100%,56%)" }} />
               Previsto
@@ -177,16 +177,16 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
                 <stop offset="100%" stopColor="hsl(142,100%,50%)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis
+             <XAxis
               dataKey="date"
-              tick={{ fontSize: 8, fill: "hsl(215,15%,25%)" }}
+              tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }}
               axisLine={false}
               tickLine={false}
               interval="preserveStartEnd"
             />
             <YAxis
               tickFormatter={tickFmt}
-              tick={{ fontSize: 8, fill: "hsl(215,15%,25%)" }}
+              tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }}
               width={50}
               axisLine={false}
               tickLine={false}
@@ -261,10 +261,10 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
         className="lg:col-span-2 rounded-2xl bg-card/20 backdrop-blur-sm p-6"
       >
         <div className="mb-6">
-          <h3 className="text-[9px] font-mono tracking-[0.3em] text-muted-foreground/40 uppercase">
+          <h3 className="text-[10px] font-mono tracking-[0.3em] text-muted-foreground/70 uppercase">
             Impacto por Categoria
           </h3>
-          <p className="text-[8px] font-mono text-muted-foreground/25 mt-1">
+          <p className="text-[9px] font-mono text-muted-foreground/50 mt-1">
             Top {waterfallData.length} eventos — O que moveu o caixa
           </p>
         </div>
@@ -289,14 +289,14 @@ export default function FinanceCharts({ monthReference, transactions }: Props) {
               <XAxis
                 type="number"
                 tickFormatter={tickFmt}
-                tick={{ fontSize: 8, fill: "hsl(215,15%,25%)" }}
+                tick={{ fontSize: 9, fill: "hsl(210,20%,60%)" }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 type="category"
                 dataKey="category"
-                tick={{ fontSize: 8, fill: "hsl(215,15%,35%)" }}
+                tick={{ fontSize: 9, fill: "hsl(210,20%,65%)" }}
                 width={90}
                 axisLine={false}
                 tickLine={false}
