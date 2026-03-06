@@ -156,12 +156,13 @@ export default function AdminHub() {
   });
   const [removing, setRemoving] = useState(false);
 
-  // Move user to another tenant
-  const [moveDialog, setMoveDialog] = useState<{ open: boolean; userId: string; name: string }>({
-    open: false, userId: "", name: "",
+  // Link user to another tenant (add, not move)
+  const [linkDialog, setLinkDialog] = useState<{ open: boolean; userId: string; name: string; email: string }>({
+    open: false, userId: "", name: "", email: "",
   });
-  const [moveTargetTenant, setMoveTargetTenant] = useState<string>("");
-  const [moving, setMoving] = useState(false);
+  const [linkTargetTenant, setLinkTargetTenant] = useState<string>("");
+  const [linkRole, setLinkRole] = useState<string>("viewer");
+  const [linking, setLinking] = useState(false);
 
   // Delete tenant
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null);
