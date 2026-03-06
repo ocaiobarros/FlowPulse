@@ -32,7 +32,7 @@ const DEFAULT_CONFIG: TelegramConfig = {
 
 export default function TelegramSettings() {
   const { t } = useTranslation();
-  const tenantId = useTenantId();
+  const { activeTenantId: tenantId } = useTenantFilter();
   const [config, setConfig] = useState<TelegramConfig>(DEFAULT_CONFIG);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
