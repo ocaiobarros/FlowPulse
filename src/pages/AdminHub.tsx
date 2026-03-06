@@ -980,6 +980,11 @@ export default function AdminHub() {
                     </h2>
                   </div>
                   <div className="flex items-center gap-2">
+                    {tenant && !editingTeam && (
+                      <Button size="sm" onClick={() => setInviteOpen(true)}>
+                        <Plus className="w-4 h-4 mr-1" /> Adicionar Usuário
+                      </Button>
+                    )}
                     {isSuperAdmin && selectedTenantId && (
                       <Button
                         variant="ghost"
@@ -987,6 +992,7 @@ export default function AdminHub() {
                         onClick={() => {
                           setEditingTeam(false);
                           setSelectedTenantId(null);
+                          setUsersTenantFilter("all");
                         }}
                       >
                         <EyeOff className="w-4 h-4 mr-1" /> Sair da visualização
