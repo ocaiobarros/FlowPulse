@@ -454,7 +454,7 @@ export default function AdminUsersPage() {
             </Button>
           )}
           {activeTab === "all" && isSuperAdmin && (
-            <Button size="sm" onClick={() => { setActiveTab("org"); setInviteOpen(true); }} disabled={!selectedTenantId}>
+            <Button size="sm" onClick={() => { setInviteForm(f => ({ ...f, target_tenant_id: selectedTenantId || tenants[0]?.id || "" })); setInviteOpen(true); }}>
               <Plus className="w-4 h-4 mr-1" /> New user
             </Button>
           )}
