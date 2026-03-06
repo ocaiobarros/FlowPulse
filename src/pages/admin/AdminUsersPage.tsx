@@ -545,7 +545,7 @@ export default function AdminUsersPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setInviteOpen(false)} disabled={inviting}>Cancelar</Button>
-            <Button onClick={handleInvite} disabled={inviting || !inviteForm.email.trim()}>
+            <Button onClick={handleInvite} disabled={inviting || !inviteForm.email.trim() || !(inviteForm.target_tenant_id || selectedTenantId)}>
               {inviting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />} Adicionar
             </Button>
           </DialogFooter>
