@@ -127,6 +127,7 @@ export default function AdminHub() {
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [tenants, setTenants] = useState<TenantInfo[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [usersTenantFilter, setUsersTenantFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -186,6 +187,11 @@ export default function AdminHub() {
     if (!user) return;
     setLoading(true);
     try {
+      const { data: isSA, error: isSAError } = await supabase.rpc("is_super_admin", { p_user_id: user.id });
+      if (isSAError) throw isSAError;
+      const superAdmin = Boolean(isSA);
+      setIsSuperAdmin(superAdmin);
+
       const { data: myRoles, error: myRolesError } = await supabase
         .from("user_roles")
         .select("role")
@@ -194,17 +200,12 @@ export default function AdminHub() {
       if (myRolesError) throw myRolesError;
 
       const hasAdminRole = (myRoles ?? []).some((row) => row.role === "admin");
-      if (!hasAdminRole) {
+      if (!superAdmin && !hasAdminRole) {
         setIsAdmin(false);
         setLoading(false);
         return;
       }
       setIsAdmin(true);
-
-      const { data: isSA, error: isSAError } = await supabase.rpc("is_super_admin", { p_user_id: user.id });
-      if (isSAError) throw isSAError;
-      const superAdmin = Boolean(isSA);
-      setIsSuperAdmin(superAdmin);
 
       const tenantRequest = superAdmin
         ? supabase.functions.invoke("tenant-admin", { body: { action: "list" } })
@@ -290,6 +291,11 @@ export default function AdminHub() {
         if (allTenants.length === 0) return null;
         return allTenants[0].id;
       });
+      setUsersTenantFilter((current) => {
+        if (!superAdmin) return allTenants[0]?.id ?? "all";
+        if (current === "all") return "all";
+        return allTenants.some((t) => t.id === current) ? current : "all";
+      });
       hasInitializedTenantSelection.current = allTenants.length > 0;
 
       setProfiles(nextProfiles);
@@ -313,9 +319,13 @@ export default function AdminHub() {
     }
   }, [selectedTenantId, tenant?.name, tenant?.slug]);
 
-  const tenantRoles = roles.filter((r) => r.tenant_id === selectedTenantId);
   const profileById = new Map(profiles.map((p) => [p.id, p]));
-  const tenantProfiles = Array.from(new Map(tenantRoles.map((r) => [r.user_id, r])).values()).map((memberRole) => {
+
+  const selectedTenantRoles = selectedTenantId
+    ? roles.filter((r) => r.tenant_id === selectedTenantId)
+    : [];
+
+  const selectedTenantProfiles = Array.from(new Map(selectedTenantRoles.map((r) => [r.user_id, r])).values()).map((memberRole) => {
     const profile = profileById.get(memberRole.user_id);
     return {
       id: memberRole.user_id,
@@ -327,7 +337,34 @@ export default function AdminHub() {
     } satisfies Profile;
   });
 
-  const getRoleForUser = (userId: string) => tenantRoles.find((r) => r.user_id === userId)?.role ?? "viewer";
+  const usersScopeTenantId = isSuperAdmin
+    ? (usersTenantFilter === "all" ? null : usersTenantFilter)
+    : selectedTenantId;
+
+  const usersScopeRoles = usersScopeTenantId
+    ? roles.filter((r) => r.tenant_id === usersScopeTenantId)
+    : roles;
+
+  const userRows = Array.from(new Set(usersScopeRoles.map((r) => r.user_id))).map((userId) => {
+    const profile = profileById.get(userId);
+    const roleCreatedAt = usersScopeRoles.find((r) => r.user_id === userId)?.created_at;
+    return {
+      id: userId,
+      display_name: profile?.display_name ?? null,
+      email: profile?.email ?? null,
+      avatar_url: profile?.avatar_url ?? null,
+      tenant_id: usersScopeTenantId ?? profile?.tenant_id ?? "",
+      created_at: profile?.created_at ?? roleCreatedAt ?? new Date().toISOString(),
+    } satisfies Profile;
+  });
+
+  const getRoleForUser = (userId: string, tenantId?: string | null) => {
+    const targetTenantId = tenantId ?? selectedTenantId;
+    if (!targetTenantId) return null;
+    return roles.find((r) => r.user_id === userId && r.tenant_id === targetTenantId)?.role ?? null;
+  };
+
+  const getRolesForUserInScope = (userId: string) => usersScopeRoles.filter((r) => r.user_id === userId);
 
   const getRoleBadgeVariant = (role: string) => {
     if (role === "admin") return "default" as const;
@@ -337,10 +374,16 @@ export default function AdminHub() {
     return "outline" as const;
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  const handleRoleChange = async (userId: string, newRole: string, tenantId?: string | null) => {
+    const targetTenantId = tenantId ?? selectedTenantId;
+    if (!targetTenantId) {
+      toast({ variant: "destructive", title: "Selecione uma organização", description: "Escolha uma organização para alterar a role." });
+      return;
+    }
+
     setChangingRole(userId);
     try {
-      const existing = roles.find((r) => r.user_id === userId && r.tenant_id === selectedTenantId);
+      const existing = roles.find((r) => r.user_id === userId && r.tenant_id === targetTenantId);
       if (existing) {
         const { error } = await supabase.from("user_roles")
           .update({ role: newRole as UserRole["role"] }).eq("id", existing.id);
@@ -586,13 +629,14 @@ export default function AdminHub() {
     }
   };
 
-  const filteredProfiles = tenantProfiles.filter((p) => {
+  const filteredProfiles = userRows.filter((p) => {
     const term = search.trim().toLowerCase();
+    const rolesInView = getRolesForUserInScope(p.id);
     const matchesSearch =
       term === "" ||
       (p.display_name?.toLowerCase().includes(term) ?? false) ||
       (p.email?.toLowerCase().includes(term) ?? false);
-    const matchesRole = roleFilter === "all" || getRoleForUser(p.id) === roleFilter;
+    const matchesRole = roleFilter === "all" || rolesInView.some((r) => r.role === roleFilter);
     return matchesSearch && matchesRole;
   });
 
@@ -716,17 +760,15 @@ export default function AdminHub() {
                     <h2 className="text-base font-bold font-[Orbitron] tracking-wide text-foreground">
                       USUÁRIOS ({filteredProfiles.length})
                     </h2>
-                    <Button size="sm" onClick={() => setInviteOpen(true)}>
-                      <Plus className="w-4 h-4 mr-1" /> Novo Usuário
-                    </Button>
                   </div>
                   <div className="flex items-center gap-2">
                     {isSuperAdmin && tenants.length > 1 && (
-                      <Select value={selectedTenantId ?? ""} onValueChange={setSelectedTenantId}>
-                        <SelectTrigger className="w-40 h-9 bg-muted/50 border-border text-xs">
+                      <Select value={usersTenantFilter} onValueChange={setUsersTenantFilter}>
+                        <SelectTrigger className="w-48 h-9 bg-muted/50 border-border text-xs">
                           <SelectValue placeholder="Organização" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="all">Todas organizações</SelectItem>
                           {tenants.map((t) => (
                             <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                           ))}
@@ -774,8 +816,12 @@ export default function AdminHub() {
                     </thead>
                     <tbody>
                       {filteredProfiles.map((p) => {
-                        const role = getRoleForUser(p.id);
+                        const scopedRoles = getRolesForUserInScope(p.id);
+                        const primaryRole = usersScopeTenantId ? getRoleForUser(p.id, usersScopeTenantId) : null;
+                        const editableRole = primaryRole ?? "viewer";
+                        const distinctRoles = [...new Set(scopedRoles.map((r) => r.role))];
                         const isSelf = p.id === user?.id;
+
                         return (
                           <tr key={p.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                             <td className="px-4 py-3">
@@ -808,21 +854,33 @@ export default function AdminHub() {
                             <td className="px-4 py-3 text-center">
                               {changingRole === p.id ? (
                                 <Loader2 className="w-4 h-4 animate-spin mx-auto text-primary" />
-                              ) : isSelf ? (
-                                <Badge variant={getRoleBadgeVariant(role)}>{role}</Badge>
+                              ) : usersScopeTenantId ? (
+                                isSelf ? (
+                                  <Badge variant={getRoleBadgeVariant(editableRole)}>{editableRole}</Badge>
+                                ) : (
+                                  <Select value={editableRole} onValueChange={(v) => handleRoleChange(p.id, v, usersScopeTenantId)}>
+                                    <SelectTrigger className="w-28 h-8 mx-auto bg-muted/50 border-border text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="admin">Admin</SelectItem>
+                                      <SelectItem value="editor">Editor</SelectItem>
+                                      <SelectItem value="tech">Técnico</SelectItem>
+                                      <SelectItem value="sales">Vendedor</SelectItem>
+                                      <SelectItem value="viewer">Viewer</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                )
+                              ) : distinctRoles.length > 0 ? (
+                                <div className="flex items-center justify-center gap-1 flex-wrap">
+                                  {distinctRoles.map((role) => (
+                                    <Badge key={`${p.id}-${role}`} variant={getRoleBadgeVariant(role)} className="text-[10px]">
+                                      {role}
+                                    </Badge>
+                                  ))}
+                                </div>
                               ) : (
-                                <Select value={role} onValueChange={(v) => handleRoleChange(p.id, v)}>
-                                  <SelectTrigger className="w-28 h-8 mx-auto bg-muted/50 border-border text-xs">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                    <SelectItem value="editor">Editor</SelectItem>
-                                    <SelectItem value="tech">Técnico</SelectItem>
-                                    <SelectItem value="sales">Vendedor</SelectItem>
-                                    <SelectItem value="viewer">Viewer</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                <span className="text-xs text-muted-foreground">—</span>
                               )}
                             </td>
                             <td className="px-4 py-3 text-center text-xs text-muted-foreground">
@@ -837,12 +895,14 @@ export default function AdminHub() {
                                       <Building2 className="w-4 h-4" />
                                     </Button>
                                   )}
-                                  <Button variant="ghost" size="icon"
-                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    title="Remover da organização"
-                                    onClick={() => setRemoveDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário" })}>
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
+                                  {usersScopeTenantId && (
+                                    <Button variant="ghost" size="icon"
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      title="Remover da organização"
+                                      onClick={() => setRemoveDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário" })}>
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  )}
                                 </div>
                               )}
                             </td>
@@ -920,6 +980,11 @@ export default function AdminHub() {
                     </h2>
                   </div>
                   <div className="flex items-center gap-2">
+                    {tenant && !editingTeam && (
+                      <Button size="sm" onClick={() => setInviteOpen(true)}>
+                        <Plus className="w-4 h-4 mr-1" /> Adicionar Usuário
+                      </Button>
+                    )}
                     {isSuperAdmin && selectedTenantId && (
                       <Button
                         variant="ghost"
@@ -927,6 +992,7 @@ export default function AdminHub() {
                         onClick={() => {
                           setEditingTeam(false);
                           setSelectedTenantId(null);
+                          setUsersTenantFilter("all");
                         }}
                       >
                         <EyeOff className="w-4 h-4 mr-1" /> Sair da visualização
@@ -991,7 +1057,7 @@ export default function AdminHub() {
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Membros</p>
-                      <p className="text-sm font-medium text-foreground">{tenantProfiles.length}</p>
+                      <p className="text-sm font-medium text-foreground">{selectedTenantProfiles.length}</p>
                     </div>
                   </div>
                 )}
@@ -1002,7 +1068,7 @@ export default function AdminHub() {
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Membros por Role</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                       {(["admin", "editor", "tech", "sales", "viewer"] as const).map((r) => {
-                        const members = tenantProfiles.filter((p) => getRoleForUser(p.id) === r);
+                        const members = selectedTenantProfiles.filter((p) => getRoleForUser(p.id, selectedTenantId) === r);
                         return (
                           <div key={r} className="rounded-lg border border-border bg-muted/30 p-4">
                             <div className="flex items-center gap-2 mb-3">
@@ -1031,7 +1097,7 @@ export default function AdminHub() {
 
             {/* ─── TEAMS TAB ─── */}
             <TabsContent value="teams">
-              <TeamsPanel tenantId={selectedTenantId} profiles={tenantProfiles.map((p) => ({ id: p.id, display_name: p.display_name, email: p.email }))} />
+              <TeamsPanel tenantId={selectedTenantId} profiles={selectedTenantProfiles.map((p) => ({ id: p.id, display_name: p.display_name, email: p.email }))} />
             </TabsContent>
 
             {/* ─── CONNECTIONS TAB ─── */}
