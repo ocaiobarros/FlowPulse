@@ -319,42 +319,43 @@ export default function AdminHub() {
     }
   };
 
-  const handleMoveUser = async () => {
-    if (!moveTargetTenant || !moveDialog.userId) return;
-    setMoving(true);
+  const handleLinkUser = async () => {
+    if (!linkTargetTenant || !linkDialog.userId) return;
+    setLinking(true);
     try {
-      const profileToMove = profiles.find((p) => p.id === moveDialog.userId);
-      const email = profileToMove?.email?.trim().toLowerCase();
+      const email = linkDialog.email?.trim().toLowerCase();
       if (!email) {
-        throw new Error("Não foi possível mover: usuário sem e-mail válido.");
+        throw new Error("Não foi possível vincular: usuário sem e-mail válido.");
       }
 
-      const oldRole = roles.find((r) => r.user_id === moveDialog.userId && r.tenant_id === selectedTenantId);
-      const roleValue = oldRole?.role ?? "viewer";
+      const profileToLink = profiles.find((p) => p.id === linkDialog.userId);
 
       const { data, error } = await supabase.functions.invoke("invite-user", {
         body: {
           email,
-          display_name: profileToMove?.display_name ?? "",
-          role: roleValue,
-          target_tenant_id: moveTargetTenant,
+          display_name: profileToLink?.display_name ?? "",
+          role: linkRole,
+          target_tenant_id: linkTargetTenant,
+          mode: "link",
         },
       });
 
       if (error) {
-        const parsed = await getFunctionErrorMessage(error, "Falha ao mover usuário.");
+        const parsed = await getFunctionErrorMessage(error, "Falha ao vincular usuário.");
         throw new Error(parsed);
       }
       if (data?.error) throw new Error(data.error);
 
-      toast({ title: "Usuário movido", description: `${moveDialog.name} foi transferido para outra organização.` });
-      setMoveDialog({ open: false, userId: "", name: "" });
-      setMoveTargetTenant("");
+      const targetName = tenants.find((t) => t.id === linkTargetTenant)?.name ?? "organização";
+      toast({ title: "Usuário vinculado", description: `${linkDialog.name} agora também pertence a "${targetName}".` });
+      setLinkDialog({ open: false, userId: "", name: "", email: "" });
+      setLinkTargetTenant("");
+      setLinkRole("viewer");
       await fetchData();
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Erro", description: err.message || "Falha ao mover usuário." });
+      toast({ variant: "destructive", title: "Erro", description: err.message || "Falha ao vincular usuário." });
     } finally {
-      setMoving(false);
+      setLinking(false);
     }
   };
 
