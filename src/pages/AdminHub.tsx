@@ -374,10 +374,16 @@ export default function AdminHub() {
     return "outline" as const;
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  const handleRoleChange = async (userId: string, newRole: string, tenantId?: string | null) => {
+    const targetTenantId = tenantId ?? selectedTenantId;
+    if (!targetTenantId) {
+      toast({ variant: "destructive", title: "Selecione uma organização", description: "Escolha uma organização para alterar a role." });
+      return;
+    }
+
     setChangingRole(userId);
     try {
-      const existing = roles.find((r) => r.user_id === userId && r.tenant_id === selectedTenantId);
+      const existing = roles.find((r) => r.user_id === userId && r.tenant_id === targetTenantId);
       if (existing) {
         const { error } = await supabase.from("user_roles")
           .update({ role: newRole as UserRole["role"] }).eq("id", existing.id);
