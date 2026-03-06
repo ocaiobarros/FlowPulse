@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Map, AlertTriangle, Wrench, Search, BarChart3,
-  FileText, Clock, Settings, Users, Building2, Zap, ChevronRight,
+  FileText, Clock, Settings, Users, Zap, ChevronRight,
   Server, Box, MonitorCheck, Fuel, Globe, LayoutDashboard,
   RefreshCw, Send, UserCog, BookOpen, HelpCircle, Home, ExternalLink, Eye,
   Printer, DollarSign,
