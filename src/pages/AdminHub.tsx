@@ -468,12 +468,6 @@ export default function AdminHub() {
         emailToSend = `${emailToSend}@flowpulse.local`;
       }
 
-      // Check if the user already exists in profiles — if so, use "link" mode to avoid moving them
-      const existingProfile = profiles.find(
-        (p) => (p.email ?? "").toLowerCase() === emailToSend
-      );
-      const useMode = existingProfile ? "link" : undefined; // undefined = default "move" for new users
-
       const { data, error } = await supabase.functions.invoke("invite-user", {
         body: {
           email: emailToSend,
@@ -481,7 +475,7 @@ export default function AdminHub() {
           role: inviteForm.role,
           password: inviteForm.password.trim() || undefined,
           target_tenant_id: selectedTenantId,
-          ...(useMode ? { mode: useMode } : {}),
+          mode: "link", // preserve existing memberships; backend handles new-user setup safely
         },
       });
 
@@ -491,12 +485,12 @@ export default function AdminHub() {
         throw new Error("A função de criação de usuário ainda não está implementada no backend local.");
       }
 
-      const msg = existingProfile
+      const existingUser = Boolean(data?.existing);
+      const msg = existingUser
         ? `${emailToSend} foi vinculado à organização "${tenant?.name ?? ""}".`
-        : inviteForm.password.trim()
-          ? `${emailToSend} criado com a senha definida.`
-          : `${emailToSend} foi adicionado ao time.`;
-      toast({ title: existingProfile ? "Usuário vinculado" : "Usuário adicionado", description: msg });
+        : `${emailToSend} foi criado e vinculado à organização "${tenant?.name ?? ""}".`;
+
+      toast({ title: existingUser ? "Usuário vinculado" : "Usuário adicionado", description: msg });
       setInviteOpen(false);
       setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
       await fetchData();
