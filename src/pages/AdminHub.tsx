@@ -745,8 +745,8 @@ export default function AdminHub() {
                               {!isSelf && (
                                 <div className="flex items-center justify-center gap-1">
                                   {isSuperAdmin && tenants.length > 1 && (
-                                    <Button variant="ghost" size="icon" title="Trocar Time"
-                                      onClick={() => { setMoveDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário" }); setMoveTargetTenant(""); }}>
+                                    <Button variant="ghost" size="icon" title="Vincular a Organização"
+                                      onClick={() => { setLinkDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário", email: p.email ?? "" }); setLinkTargetTenant(""); setLinkRole("viewer"); }}>
                                       <Building2 className="w-4 h-4" />
                                     </Button>
                                   )}
@@ -1349,21 +1349,21 @@ export default function AdminHub() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── MOVE USER DIALOG ─── */}
-      <Dialog open={moveDialog.open} onOpenChange={(o) => !moving && setMoveDialog((s) => ({ ...s, open: o }))}>
+      {/* ─── LINK USER TO ORG DIALOG ─── */}
+      <Dialog open={linkDialog.open} onOpenChange={(o) => !linking && setLinkDialog((s) => ({ ...s, open: o }))}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Trocar Time</DialogTitle>
+            <DialogTitle>Vincular a Organização</DialogTitle>
             <DialogDescription>
-              Mover <strong>{moveDialog.name}</strong> para outra organização.
+              Adicionar <strong>{linkDialog.name}</strong> a outra organização sem removê-lo da atual.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Organização destino</Label>
-              <Select value={moveTargetTenant} onValueChange={setMoveTargetTenant}>
+              <Select value={linkTargetTenant} onValueChange={setLinkTargetTenant}>
                 <SelectTrigger className="bg-muted/50 border-border">
-                  <SelectValue placeholder="Selecione o time..." />
+                  <SelectValue placeholder="Selecione a organização..." />
                 </SelectTrigger>
                 <SelectContent>
                   {tenants.filter((t) => t.id !== selectedTenantId).map((t) => (
@@ -1372,12 +1372,27 @@ export default function AdminHub() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Role na nova organização</Label>
+              <Select value={linkRole} onValueChange={setLinkRole}>
+                <SelectTrigger className="bg-muted/50 border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="tech">Técnico</SelectItem>
+                  <SelectItem value="sales">Vendedor</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setMoveDialog({ open: false, userId: "", name: "" })} disabled={moving}>Cancelar</Button>
-            <Button onClick={handleMoveUser} disabled={moving || !moveTargetTenant}>
-              {moving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Building2 className="w-4 h-4 mr-1" />}
-              Mover
+            <Button variant="ghost" onClick={() => setLinkDialog({ open: false, userId: "", name: "", email: "" })} disabled={linking}>Cancelar</Button>
+            <Button onClick={handleLinkUser} disabled={linking || !linkTargetTenant}>
+              {linking ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Building2 className="w-4 h-4 mr-1" />}
+              Vincular
             </Button>
           </DialogFooter>
         </DialogContent>
