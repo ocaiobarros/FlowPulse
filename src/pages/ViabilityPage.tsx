@@ -150,7 +150,7 @@ const statusColor = (st: string) =>
 /* ═══════════════════════════════════════════════ */
 export default function ViabilityPage() {
   const { toast } = useToast();
-  const { data: maps, isLoading: mapsLoading } = useFlowMaps();
+  const { data: maps, isLoading: mapsLoading } = useFlowMapsForViability();
 
   const [selectedMapId, setSelectedMapId] = useState("");
   const [searchMode, setSearchMode] = useState<"cep" | "coords">("cep");
