@@ -54,6 +54,17 @@ export default function AdminUsersPage() {
   const [linkRole, setLinkRole] = useState("viewer");
   const [linking, setLinking] = useState(false);
 
+  // Edit permissions
+  const [permissionDialog, setPermissionDialog] = useState<{
+    open: boolean;
+    userId: string;
+    name: string;
+    email: string;
+    tenantId: string;
+    role: string;
+  }>({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" });
+  const [savingPermission, setSavingPermission] = useState(false);
+
   /* ── Computed: All Users (profiles as source of truth) ── */
   const roleUserIds = new Set(roles.map((r) => r.user_id));
   const allUserProfiles: (Profile & { _roles: UserRole[] })[] = [
