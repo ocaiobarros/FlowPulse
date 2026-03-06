@@ -82,6 +82,7 @@ interface UserRole {
   user_id: string;
   role: "admin" | "editor" | "viewer" | "tech" | "sales";
   tenant_id: string;
+  created_at?: string;
 }
 
 interface TenantInfo {
