@@ -105,18 +105,23 @@ export default function AdminUsersPage() {
   const tenant = tenants.find((t) => t.id === selectedTenantId);
 
   /* ── Filter logic ── */
-  const applyFilter = (list: typeof allUserProfiles, useTenantScope: string | null) => {
+  const applyFilter = (
+    list: typeof allUserProfiles,
+    options: { tenantScope: string | null; includeOrgFilter: boolean },
+  ) => {
     const term = search.trim().toLowerCase();
+    const { tenantScope, includeOrgFilter } = options;
+
     return list.filter((p) => {
       const matchSearch = !term || (p.display_name?.toLowerCase().includes(term) ?? false) || (p.email?.toLowerCase().includes(term) ?? false);
-      const matchRole = roleFilter === "all" || p._roles.some((r) => r.role === roleFilter && (!useTenantScope || r.tenant_id === useTenantScope));
-      const matchOrg = orgFilter === "all" || p._roles.some((r) => r.tenant_id === orgFilter);
+      const matchRole = roleFilter === "all" || p._roles.some((r) => r.role === roleFilter && (!tenantScope || r.tenant_id === tenantScope));
+      const matchOrg = !includeOrgFilter || orgFilter === "all" || p._roles.some((r) => r.tenant_id === orgFilter);
       return matchSearch && matchRole && matchOrg;
     });
   };
 
-  const filteredAll = applyFilter(allUserProfiles, null);
-  const filteredOrg = applyFilter(orgUsers, orgTenantId);
+  const filteredAll = applyFilter(allUserProfiles, { tenantScope: null, includeOrgFilter: true });
+  const filteredOrg = applyFilter(orgUsers, { tenantScope: orgTenantId, includeOrgFilter: false });
 
   /* ── Handlers ── */
   const handleRoleChange = async (userId: string, newRole: string, tenantId: string, emailHint?: string | null, nameHint?: string | null) => {
