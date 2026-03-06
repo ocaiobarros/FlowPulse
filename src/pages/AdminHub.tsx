@@ -766,6 +766,7 @@ export default function AdminHub() {
                       <tr className="border-b border-border">
                         <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Usuário</th>
                         <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">E-mail</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Organizações</th>
                         <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
                         <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</th>
                         <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
@@ -789,6 +790,21 @@ export default function AdminHub() {
                               </div>
                             </td>
                             <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{p.email ?? "—"}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-1">
+                                {(() => {
+                                  const userTenantIds = [...new Set(roles.filter((r) => r.user_id === p.id).map((r) => r.tenant_id))];
+                                  const userTenants = userTenantIds.map((tid) => tenants.find((t) => t.id === tid)).filter(Boolean);
+                                  if (userTenants.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
+                                  return userTenants.map((t) => (
+                                    <Badge key={t!.id} variant="outline" className="text-[10px] px-1.5 py-0 font-normal whitespace-nowrap">
+                                      <Building2 className="w-3 h-3 mr-1 shrink-0" />
+                                      {t!.name}
+                                    </Badge>
+                                  ));
+                                })()}
+                              </div>
+                            </td>
                             <td className="px-4 py-3 text-center">
                               {changingRole === p.id ? (
                                 <Loader2 className="w-4 h-4 animate-spin mx-auto text-primary" />
@@ -834,7 +850,7 @@ export default function AdminHub() {
                         );
                       })}
                       {filteredProfiles.length === 0 && (
-                        <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Nenhum usuário encontrado.</td></tr>
+                        <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Nenhum usuário encontrado.</td></tr>
                       )}
                     </tbody>
                   </table>
