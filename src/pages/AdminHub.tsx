@@ -1057,7 +1057,7 @@ export default function AdminHub() {
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Membros</p>
-                      <p className="text-sm font-medium text-foreground">{tenantProfiles.length}</p>
+                      <p className="text-sm font-medium text-foreground">{selectedTenantProfiles.length}</p>
                     </div>
                   </div>
                 )}
@@ -1068,7 +1068,7 @@ export default function AdminHub() {
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Membros por Role</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                       {(["admin", "editor", "tech", "sales", "viewer"] as const).map((r) => {
-                        const members = tenantProfiles.filter((p) => getRoleForUser(p.id) === r);
+                        const members = selectedTenantProfiles.filter((p) => getRoleForUser(p.id, selectedTenantId) === r);
                         return (
                           <div key={r} className="rounded-lg border border-border bg-muted/30 p-4">
                             <div className="flex items-center gap-2 mb-3">
