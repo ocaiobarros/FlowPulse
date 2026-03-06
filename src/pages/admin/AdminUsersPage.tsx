@@ -196,19 +196,21 @@ export default function AdminUsersPage() {
   };
 
   const handleInvite = async () => {
-    if (!inviteForm.email.trim() || !selectedTenantId) return;
+    const targetTenant = inviteForm.target_tenant_id || selectedTenantId;
+    if (!inviteForm.email.trim() || !targetTenant) return;
     setInviting(true);
     try {
       let email = inviteForm.email.trim().toLowerCase();
       if (!email.includes("@")) email = `${email}@flowpulse.local`;
       const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: { email, display_name: inviteForm.display_name.trim(), role: inviteForm.role, password: inviteForm.password.trim() || undefined, target_tenant_id: selectedTenantId, mode: "link" },
+        body: { email, display_name: inviteForm.display_name.trim(), role: inviteForm.role, password: inviteForm.password.trim() || undefined, target_tenant_id: targetTenant, mode: "link" },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado", description: `${email} vinculado a "${tenant?.name ?? ""}".` });
+      const tName = tenants.find(t => t.id === targetTenant)?.name ?? "";
+      toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado", description: `${email} vinculado a "${tName}".` });
       setInviteOpen(false);
-      setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
+      setInviteForm({ email: "", display_name: "", role: "viewer", password: "", target_tenant_id: "" });
       await fetchData();
     } catch (err: any) {
       const desc = await getFunctionErrorMessage(err, "Falha ao convidar.");
