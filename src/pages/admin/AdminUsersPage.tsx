@@ -187,7 +187,26 @@ export default function AdminUsersPage() {
     }
   };
 
-  /* ── Render helpers ── */
+  const handleDeleteUser = async () => {
+    if (!deleteDialog.userId) return;
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("delete-user", {
+        body: { user_id: deleteDialog.userId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast({ title: "Usuário excluído", description: `${deleteDialog.name} foi removido permanentemente.` });
+      setDeleteDialog({ open: false, userId: "", name: "" });
+      await fetchData();
+    } catch (err: any) {
+      const desc = await getFunctionErrorMessage(err, "Falha ao excluir usuário.");
+      toast({ variant: "destructive", title: "Erro", description: desc });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const renderUserRow = (p: typeof allUserProfiles[0], scopeTenantId: string | null) => {
     const isSelf = p.id === user?.id;
     const userTenants = [...new Set(p._roles.map((r) => r.tenant_id))].map((tid) => tenants.find((t) => t.id === tid)).filter(Boolean);
