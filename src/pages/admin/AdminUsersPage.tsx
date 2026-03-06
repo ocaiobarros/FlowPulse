@@ -119,21 +119,80 @@ export default function AdminUsersPage() {
   const filteredOrg = applyFilter(orgUsers, orgTenantId);
 
   /* ── Handlers ── */
-  const handleRoleChange = async (userId: string, newRole: string, tenantId: string) => {
-    setChangingRole(userId);
+  const handleRoleChange = async (userId: string, newRole: string, tenantId: string, emailHint?: string | null, nameHint?: string | null) => {
+    const changeKey = `${userId}:${tenantId}`;
+    setChangingRole(changeKey);
+
     try {
-      const existing = roles.find((r) => r.user_id === userId && r.tenant_id === tenantId);
-      if (existing) {
-        const { error } = await supabase.from("user_roles").update({ role: newRole as UserRole["role"] }).eq("id", existing.id);
-        if (error) throw error;
+      const profile = profileById.get(userId);
+      const email = (emailHint ?? profile?.email ?? "").trim().toLowerCase();
+      if (!email) throw new Error("Usuário sem e-mail válido para atualizar permissões.");
+
+      const displayName = (nameHint ?? profile?.display_name ?? email.split("@")[0] ?? "").trim();
+
+      const { data, error } = await supabase.functions.invoke("invite-user", {
+        body: {
+          email,
+          display_name: displayName,
+          role: newRole,
+          target_tenant_id: tenantId,
+          mode: "link",
+        },
+      });
+
+      if (error) {
+        const m = await getFunctionErrorMessage(error, "Falha ao atualizar role.");
+        throw new Error(m);
       }
-      toast({ title: "Role atualizada", description: `Usuário agora é ${newRole}.` });
+      if (data?.error) throw new Error(data.error);
+
+      toast({ title: "Permissão atualizada", description: `Usuário agora é ${newRole}.` });
       await fetchData();
+      return true;
     } catch (err: any) {
       toast({ variant: "destructive", title: "Erro", description: err.message });
+      return false;
     } finally {
       setChangingRole(null);
     }
+  };
+
+  const openPermissionDialog = (p: typeof allUserProfiles[0], scopeTenantId: string | null) => {
+    const fallbackTenantId =
+      scopeTenantId
+      ?? (orgFilter !== "all" ? orgFilter : null)
+      ?? selectedTenantId
+      ?? p._roles[0]?.tenant_id
+      ?? tenants[0]?.id
+      ?? "";
+
+    const scopedRole = fallbackTenantId ? getRoleForUser(p.id, fallbackTenantId) ?? "viewer" : "viewer";
+
+    setPermissionDialog({
+      open: true,
+      userId: p.id,
+      name: p.display_name ?? p.email ?? "usuário",
+      email: p.email ?? "",
+      tenantId: fallbackTenantId,
+      role: scopedRole,
+    });
+  };
+
+  const handlePermissionSave = async () => {
+    if (!permissionDialog.userId || !permissionDialog.tenantId) return;
+
+    setSavingPermission(true);
+    const ok = await handleRoleChange(
+      permissionDialog.userId,
+      permissionDialog.role,
+      permissionDialog.tenantId,
+      permissionDialog.email,
+      permissionDialog.name,
+    );
+    if (ok) {
+      setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" });
+    }
+    setSavingPermission(false);
   };
 
   const handleInvite = async () => {
