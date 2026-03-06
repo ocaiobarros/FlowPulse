@@ -32,7 +32,7 @@ const OperationsHome = lazyRetry(() => import("./pages/OperationsHome"));
 const InventoryPage = lazyRetry(() => import("./pages/InventoryPage"));
 const CapacityPage = lazyRetry(() => import("./pages/CapacityPage"));
 const TimelinePage = lazyRetry(() => import("./pages/TimelinePage"));
-const TenantsPage = lazyRetry(() => import("./pages/TenantsPage"));
+
 const SLAGovernance = lazyRetry(() => import("./pages/SLAGovernance"));
 const ViabilityPage = lazyRetry(() => import("./pages/ViabilityPage"));
 const SystemUpdates = lazyRetry(() => import("./pages/SystemUpdates"));
@@ -140,9 +140,6 @@ const App = () => (
                           } />
                           <Route path="settings/users" element={
                             <ProtectedRoute roles={["admin"]}><AdminHub /></ProtectedRoute>
-                          } />
-                          <Route path="settings/tenants" element={
-                            <ProtectedRoute roles={["admin"]}><TenantsPage /></ProtectedRoute>
                           } />
                           <Route path="settings/profile" element={<UserSettings />} />
                           <Route path="settings/telegram" element={

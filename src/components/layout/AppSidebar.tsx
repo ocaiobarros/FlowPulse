@@ -70,7 +70,7 @@ function useSidebarItems() {
     { title: t("sidebar.rmsConnectors"), url: "/app/settings/rms-connections", icon: Zap },
     { title: t("sidebar.telegram"), url: "/app/settings/telegram", icon: Send },
     { title: t("sidebar.users"), url: "/app/settings/users", icon: Users },
-    { title: t("sidebar.tenants"), url: "/app/settings/tenants", icon: Building2 },
+    
   ];
 
   const systemItems = [
