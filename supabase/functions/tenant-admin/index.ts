@@ -109,32 +109,139 @@ Deno.serve(async (req) => {
 
       const memberUserIds = [...new Set((memberRoles ?? []).map((row) => row.user_id).filter(Boolean))];
 
-      let memberProfiles: Array<{
-        id: string;
-        display_name: string | null;
-        email: string | null;
-        avatar_url: string | null;
-        tenant_id: string;
-        created_at: string;
-      }> = [];
+      const fetchProfilesByIds = async (userIds: string[]) => {
+        const profileRows: Array<{
+          id: string;
+          display_name: string | null;
+          email: string | null;
+          avatar_url: string | null;
+          tenant_id: string;
+          created_at: string;
+        }> = [];
 
-      if (memberUserIds.length > 0) {
-        stage = "list_member_profiles";
-        const { data: profilesData, error: profilesErr } = await adminClient
-          .from("profiles")
-          .select("id, display_name, email, avatar_url, tenant_id, created_at")
-          .in("id", memberUserIds)
-          .order("created_at", { ascending: true });
+        const chunkSize = 500;
+        for (let i = 0; i < userIds.length; i += chunkSize) {
+          const chunk = userIds.slice(i, i + chunkSize);
+          if (chunk.length === 0) continue;
 
-        if (profilesErr) {
-          return new Response(JSON.stringify({ error: profilesErr.message, stage }), {
+          stage = "list_member_profiles";
+          const { data: profilesData, error: profilesErr } = await adminClient
+            .from("profiles")
+            .select("id, display_name, email, avatar_url, tenant_id, created_at")
+            .in("id", chunk)
+            .order("created_at", { ascending: true });
+
+          if (profilesErr) {
+            return { data: null, error: profilesErr };
+          }
+
+          profileRows.push(...((profilesData ?? []) as typeof profileRows));
+        }
+
+        return { data: profileRows, error: null as any };
+      };
+
+      // Scoped mode (tenant_id informado): mantém retorno apenas dos membros do tenant.
+      if (tenantId) {
+        let memberProfiles: Array<{
+          id: string;
+          display_name: string | null;
+          email: string | null;
+          avatar_url: string | null;
+          tenant_id: string;
+          created_at: string;
+        }> = [];
+
+        if (memberUserIds.length > 0) {
+          const { data: profilesData, error: profilesErr } = await fetchProfilesByIds(memberUserIds);
+          if (profilesErr) {
+            return new Response(JSON.stringify({ error: profilesErr.message, stage }), {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          memberProfiles = (profilesData ?? []) as typeof memberProfiles;
+        }
+
+        return new Response(JSON.stringify({
+          roles: memberRoles ?? [],
+          profiles: memberProfiles,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Global mode (sem tenant_id): inclui todos os usuários de autenticação,
+      // mesmo que ainda não tenham vínculo em user_roles.
+      stage = "list_auth_users";
+      const authUsers: Array<Record<string, any>> = [];
+      const perPage = 200;
+      let page = 1;
+
+      while (page <= 20) {
+        const { data: authData, error: authErr } = await adminClient.auth.admin.listUsers({ page, perPage });
+        if (authErr) {
+          return new Response(JSON.stringify({ error: authErr.message, stage }), {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
 
-        memberProfiles = (profilesData ?? []) as typeof memberProfiles;
+        const usersPage = (authData?.users ?? []) as Array<Record<string, any>>;
+        authUsers.push(...usersPage);
+
+        if (usersPage.length < perPage) break;
+        page += 1;
       }
+
+      const authUserIds = authUsers.map((u) => String(u.id)).filter(Boolean);
+      const allUserIds = [...new Set([...authUserIds, ...memberUserIds])];
+
+      const { data: profileRows, error: profileRowsErr } = await fetchProfilesByIds(allUserIds);
+      if (profileRowsErr) {
+        return new Response(JSON.stringify({ error: profileRowsErr.message, stage }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const profileById = new Map((profileRows ?? []).map((p) => [p.id, p]));
+      const authById = new Map(authUsers.map((u) => [String(u.id), u]));
+      const firstTenantByUser = new Map<string, string>();
+      for (const r of memberRoles ?? []) {
+        if (!firstTenantByUser.has(r.user_id)) {
+          firstTenantByUser.set(r.user_id, r.tenant_id);
+        }
+      }
+
+      const memberProfiles = allUserIds
+        .map((uid) => {
+          const p = profileById.get(uid);
+          const au = authById.get(uid);
+          const userMeta = (au?.user_metadata ?? {}) as Record<string, any>;
+
+          const fallbackDisplayName =
+            typeof userMeta.display_name === "string" && userMeta.display_name.trim().length > 0
+              ? userMeta.display_name.trim()
+              : typeof userMeta.full_name === "string" && userMeta.full_name.trim().length > 0
+                ? userMeta.full_name.trim()
+                : null;
+
+          const fallbackEmail = typeof au?.email === "string" ? au.email : null;
+          const fallbackAvatar = typeof userMeta.avatar_url === "string" ? userMeta.avatar_url : null;
+          const fallbackCreatedAt = typeof au?.created_at === "string" ? au.created_at : new Date().toISOString();
+
+          return {
+            id: uid,
+            display_name: p?.display_name ?? fallbackDisplayName,
+            email: p?.email ?? fallbackEmail,
+            avatar_url: p?.avatar_url ?? fallbackAvatar,
+            tenant_id: p?.tenant_id ?? firstTenantByUser.get(uid) ?? "",
+            created_at: p?.created_at ?? fallbackCreatedAt,
+          };
+        })
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
       return new Response(JSON.stringify({
         roles: memberRoles ?? [],
