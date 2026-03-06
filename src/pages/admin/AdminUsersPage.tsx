@@ -345,7 +345,10 @@ export default function AdminUsersPage() {
                   <MoreHorizontal className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => openPermissionDialog(p, scopeTenantId)}>
+                  <Pencil className="w-4 h-4 mr-2" /> Editar permissões
+                </DropdownMenuItem>
                 {!scopeTenantId && tenants.length > 1 && (
                   <DropdownMenuItem onClick={() => { setLinkDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário", email: p.email ?? "" }); setLinkTargetTenant(""); setLinkRole("viewer"); }}>
                     <Building2 className="w-4 h-4 mr-2" /> Vincular a Organização
