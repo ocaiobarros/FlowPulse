@@ -356,7 +356,9 @@ Deno.serve(async (req) => {
       success: true,
       user_id: userId,
       existing: existingAuthUser,
-      moved: (previousTenantId !== null && previousTenantId !== targetTenant) || movedFromAutoTenant,
+      mode,
+      linked: mode === "link",
+      moved: mode !== "link" && ((previousTenantId !== null && previousTenantId !== targetTenant)),
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
