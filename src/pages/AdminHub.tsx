@@ -210,14 +210,16 @@ export default function AdminHub() {
         ? supabase.functions.invoke("tenant-admin", { body: { action: "list" } })
         : supabase.from("tenants").select("id, name, slug, created_at").order("created_at", { ascending: true });
 
-      const [tenantsRes, profilesRes, rolesRes] = await Promise.all([
-        tenantRequest,
-        supabase.from("profiles").select("*").order("created_at", { ascending: true }),
-        supabase.from("user_roles").select("*"),
-      ]);
-
       let allTenants: TenantInfo[] = [];
+      let nextProfiles: Profile[] = [];
+      let nextRoles: UserRole[] = [];
+
       if (superAdmin) {
+        const [tenantsRes, membersRes] = await Promise.all([
+          tenantRequest,
+          supabase.functions.invoke("tenant-admin", { body: { action: "members" } }),
+        ]);
+
         const { data, error } = tenantsRes as { data: any; error: any };
         if (error) {
           const parsed = await getFunctionErrorMessage(error, "Falha ao listar organizações.");
@@ -225,14 +227,39 @@ export default function AdminHub() {
         }
         if (data?.error) throw new Error(data.error);
         allTenants = (data?.tenants ?? []) as TenantInfo[];
+
+        if (membersRes.error) {
+          const parsed = await getFunctionErrorMessage(membersRes.error, "Falha ao listar membros.");
+          throw new Error(parsed);
+        }
+
+        const membersPayload = (membersRes.data ?? {}) as {
+          error?: string;
+          profiles?: Profile[];
+          roles?: UserRole[];
+        };
+
+        if (membersPayload.error) throw new Error(membersPayload.error);
+
+        nextProfiles = membersPayload.profiles ?? [];
+        nextRoles = membersPayload.roles ?? [];
       } else {
+        const [tenantsRes, profilesRes, rolesRes] = await Promise.all([
+          tenantRequest,
+          supabase.from("profiles").select("*").order("created_at", { ascending: true }),
+          supabase.from("user_roles").select("*"),
+        ]);
+
         const { data, error } = tenantsRes as { data: TenantInfo[] | null; error: { message: string } | null };
         if (error) throw new Error(error.message);
         allTenants = data ?? [];
-      }
 
-      if (profilesRes.error) throw profilesRes.error;
-      if (rolesRes.error) throw rolesRes.error;
+        if (profilesRes.error) throw profilesRes.error;
+        if (rolesRes.error) throw rolesRes.error;
+
+        nextProfiles = (profilesRes.data ?? []) as Profile[];
+        nextRoles = (rolesRes.data ?? []) as UserRole[];
+      }
 
       setTenants(allTenants);
       setSelectedTenantId((current) => {
@@ -243,8 +270,8 @@ export default function AdminHub() {
       });
       hasInitializedTenantSelection.current = allTenants.length > 0;
 
-      setProfiles(profilesRes.data ?? []);
-      setRoles((rolesRes.data ?? []) as UserRole[]);
+      setProfiles(nextProfiles);
+      setRoles(nextRoles);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Erro", description: err?.message || "Falha ao carregar dados." });
     } finally {
