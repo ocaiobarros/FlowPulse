@@ -595,7 +595,56 @@ export default function AdminUsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete User Dialog ── */}
+      {/* ── Edit Permission Dialog ── */}
+      <Dialog open={permissionDialog.open} onOpenChange={(o) => !savingPermission && setPermissionDialog((s) => ({ ...s, open: o }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar permissões</DialogTitle>
+            <DialogDescription>Defina a organização e role de <strong>{permissionDialog.name}</strong>.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Organização</Label>
+              <Select
+                value={permissionDialog.tenantId}
+                onValueChange={(tenantId) => setPermissionDialog((s) => ({
+                  ...s,
+                  tenantId,
+                  role: getRoleForUser(s.userId, tenantId) ?? "viewer",
+                }))}
+              >
+                <SelectTrigger className="bg-muted/50 border-border"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Role</Label>
+              <Select value={permissionDialog.role} onValueChange={(role) => setPermissionDialog((s) => ({ ...s, role }))}>
+                <SelectTrigger className="bg-muted/50 border-border"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="tech">Técnico</SelectItem>
+                  <SelectItem value="sales">Vendedor</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" })} disabled={savingPermission}>
+              Cancelar
+            </Button>
+            <Button onClick={handlePermissionSave} disabled={savingPermission || !permissionDialog.tenantId}>
+              {savingPermission ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />} Salvar permissões
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete User Dialog ── */
       <Dialog open={deleteDialog.open} onOpenChange={(o) => !deleting && setDeleteDialog((s) => ({ ...s, open: o }))}>
         <DialogContent>
           <DialogHeader>
