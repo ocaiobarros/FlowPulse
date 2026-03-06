@@ -501,9 +501,20 @@ export default function AdminUsersPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Adicionar Novo Usuário</DialogTitle>
-            <DialogDescription>Vinculado à organização: <strong>{tenant?.name ?? "nenhuma"}</strong>.</DialogDescription>
+            <DialogDescription>Vinculado à organização selecionada abaixo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {isSuperAdmin && tenants.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Organização *</Label>
+                <Select value={inviteForm.target_tenant_id || selectedTenantId || ""} onValueChange={(v) => setInviteForm((f) => ({ ...f, target_tenant_id: v }))}>
+                  <SelectTrigger className="bg-muted/50 border-border"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">E-mail *</Label>
               <Input value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="admin ou usuario@empresa.com" className="bg-muted/50 border-border" />
