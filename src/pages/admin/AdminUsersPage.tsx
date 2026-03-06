@@ -521,6 +521,24 @@ export default function AdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Delete User Dialog ── */}
+      <Dialog open={deleteDialog.open} onOpenChange={(o) => !deleting && setDeleteDialog((s) => ({ ...s, open: o }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir usuário permanentemente</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja excluir <strong>{deleteDialog.name}</strong>? Esta ação é irreversível e removerá o usuário de todas as organizações.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteDialog({ open: false, userId: "", name: "" })} disabled={deleting}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDeleteUser} disabled={deleting}>
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />} Excluir permanentemente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
