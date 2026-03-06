@@ -808,7 +808,7 @@ export default function AdminHub() {
                   </div>
                   <div className="flex flex-wrap gap-2 mt-3">
                     {tenants.map((t) => {
-                      const memberCount = profiles.filter((p) => p.tenant_id === t.id).length;
+                      const memberCount = new Set(roles.filter((r) => r.tenant_id === t.id).map((r) => r.user_id)).size;
                       return (
                         <div key={t.id} className="flex items-center gap-1">
                           <Button size="sm"
