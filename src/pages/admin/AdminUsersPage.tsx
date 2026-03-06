@@ -54,6 +54,17 @@ export default function AdminUsersPage() {
   const [linkRole, setLinkRole] = useState("viewer");
   const [linking, setLinking] = useState(false);
 
+  // Edit permissions
+  const [permissionDialog, setPermissionDialog] = useState<{
+    open: boolean;
+    userId: string;
+    name: string;
+    email: string;
+    tenantId: string;
+    role: string;
+  }>({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" });
+  const [savingPermission, setSavingPermission] = useState(false);
+
   /* ── Computed: All Users (profiles as source of truth) ── */
   const roleUserIds = new Set(roles.map((r) => r.user_id));
   const allUserProfiles: (Profile & { _roles: UserRole[] })[] = [
@@ -108,21 +119,80 @@ export default function AdminUsersPage() {
   const filteredOrg = applyFilter(orgUsers, orgTenantId);
 
   /* ── Handlers ── */
-  const handleRoleChange = async (userId: string, newRole: string, tenantId: string) => {
-    setChangingRole(userId);
+  const handleRoleChange = async (userId: string, newRole: string, tenantId: string, emailHint?: string | null, nameHint?: string | null) => {
+    const changeKey = `${userId}:${tenantId}`;
+    setChangingRole(changeKey);
+
     try {
-      const existing = roles.find((r) => r.user_id === userId && r.tenant_id === tenantId);
-      if (existing) {
-        const { error } = await supabase.from("user_roles").update({ role: newRole as UserRole["role"] }).eq("id", existing.id);
-        if (error) throw error;
+      const profile = profileById.get(userId);
+      const email = (emailHint ?? profile?.email ?? "").trim().toLowerCase();
+      if (!email) throw new Error("Usuário sem e-mail válido para atualizar permissões.");
+
+      const displayName = (nameHint ?? profile?.display_name ?? email.split("@")[0] ?? "").trim();
+
+      const { data, error } = await supabase.functions.invoke("invite-user", {
+        body: {
+          email,
+          display_name: displayName,
+          role: newRole,
+          target_tenant_id: tenantId,
+          mode: "link",
+        },
+      });
+
+      if (error) {
+        const m = await getFunctionErrorMessage(error, "Falha ao atualizar role.");
+        throw new Error(m);
       }
-      toast({ title: "Role atualizada", description: `Usuário agora é ${newRole}.` });
+      if (data?.error) throw new Error(data.error);
+
+      toast({ title: "Permissão atualizada", description: `Usuário agora é ${newRole}.` });
       await fetchData();
+      return true;
     } catch (err: any) {
       toast({ variant: "destructive", title: "Erro", description: err.message });
+      return false;
     } finally {
       setChangingRole(null);
     }
+  };
+
+  const openPermissionDialog = (p: typeof allUserProfiles[0], scopeTenantId: string | null) => {
+    const fallbackTenantId =
+      scopeTenantId
+      ?? (orgFilter !== "all" ? orgFilter : null)
+      ?? selectedTenantId
+      ?? p._roles[0]?.tenant_id
+      ?? tenants[0]?.id
+      ?? "";
+
+    const scopedRole = fallbackTenantId ? getRoleForUser(p.id, fallbackTenantId) ?? "viewer" : "viewer";
+
+    setPermissionDialog({
+      open: true,
+      userId: p.id,
+      name: p.display_name ?? p.email ?? "usuário",
+      email: p.email ?? "",
+      tenantId: fallbackTenantId,
+      role: scopedRole,
+    });
+  };
+
+  const handlePermissionSave = async () => {
+    if (!permissionDialog.userId || !permissionDialog.tenantId) return;
+
+    setSavingPermission(true);
+    const ok = await handleRoleChange(
+      permissionDialog.userId,
+      permissionDialog.role,
+      permissionDialog.tenantId,
+      permissionDialog.email,
+      permissionDialog.name,
+    );
+    if (ok) {
+      setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" });
+    }
+    setSavingPermission(false);
   };
 
   const handleInvite = async () => {
@@ -239,13 +309,13 @@ export default function AdminUsersPage() {
           </td>
         )}
         <td className="px-4 py-3 text-center">
-          {changingRole === p.id ? (
+          {changingRole === `${p.id}:${scopeTenantId ?? ""}` ? (
             <Loader2 className="w-4 h-4 animate-spin mx-auto text-primary" />
           ) : scopeTenantId ? (
             isSelf ? (
               <Badge variant={getRoleBadgeVariant(roleInScope!)}>{roleInScope}</Badge>
             ) : (
-              <Select value={roleInScope!} onValueChange={(v) => handleRoleChange(p.id, v, scopeTenantId)}>
+              <Select value={roleInScope!} onValueChange={(v) => handleRoleChange(p.id, v, scopeTenantId, p.email, p.display_name)}>
                 <SelectTrigger className="w-28 h-8 mx-auto bg-muted/50 border-border text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -275,7 +345,10 @@ export default function AdminUsersPage() {
                   <MoreHorizontal className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => openPermissionDialog(p, scopeTenantId)}>
+                  <Pencil className="w-4 h-4 mr-2" /> Editar permissões
+                </DropdownMenuItem>
                 {!scopeTenantId && tenants.length > 1 && (
                   <DropdownMenuItem onClick={() => { setLinkDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário", email: p.email ?? "" }); setLinkTargetTenant(""); setLinkRole("viewer"); }}>
                     <Building2 className="w-4 h-4 mr-2" /> Vincular a Organização
@@ -517,6 +590,55 @@ export default function AdminUsersPage() {
             <Button variant="ghost" onClick={() => setLinkDialog({ open: false, userId: "", name: "", email: "" })} disabled={linking}>Cancelar</Button>
             <Button onClick={handleLink} disabled={linking || !linkTargetTenant}>
               {linking ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Building2 className="w-4 h-4 mr-1" />} Vincular
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Permission Dialog ── */}
+      <Dialog open={permissionDialog.open} onOpenChange={(o) => !savingPermission && setPermissionDialog((s) => ({ ...s, open: o }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar permissões</DialogTitle>
+            <DialogDescription>Defina a organização e role de <strong>{permissionDialog.name}</strong>.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Organização</Label>
+              <Select
+                value={permissionDialog.tenantId}
+                onValueChange={(tenantId) => setPermissionDialog((s) => ({
+                  ...s,
+                  tenantId,
+                  role: getRoleForUser(s.userId, tenantId) ?? "viewer",
+                }))}
+              >
+                <SelectTrigger className="bg-muted/50 border-border"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Role</Label>
+              <Select value={permissionDialog.role} onValueChange={(role) => setPermissionDialog((s) => ({ ...s, role }))}>
+                <SelectTrigger className="bg-muted/50 border-border"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="tech">Técnico</SelectItem>
+                  <SelectItem value="sales">Vendedor</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" })} disabled={savingPermission}>
+              Cancelar
+            </Button>
+            <Button onClick={handlePermissionSave} disabled={savingPermission || !permissionDialog.tenantId}>
+              {savingPermission ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />} Salvar permissões
             </Button>
           </DialogFooter>
         </DialogContent>
