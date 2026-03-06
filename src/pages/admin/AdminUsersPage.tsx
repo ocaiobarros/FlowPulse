@@ -644,7 +644,7 @@ export default function AdminUsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete User Dialog ── */
+      {/* ── Delete User Dialog ── */}
       <Dialog open={deleteDialog.open} onOpenChange={(o) => !deleting && setDeleteDialog((s) => ({ ...s, open: o }))}>
         <DialogContent>
           <DialogHeader>
