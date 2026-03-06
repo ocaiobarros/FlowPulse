@@ -14,10 +14,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  Users, Building2, Loader2, Trash2, Plus, Search, Crown,
+  Users, Building2, Loader2, Trash2, Plus, Search, Crown, MoreHorizontal, Pencil, UserX,
 } from "lucide-react";
 import AdminBreadcrumb from "./AdminBreadcrumb";
 
