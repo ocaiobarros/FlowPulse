@@ -37,7 +37,7 @@ export default function AdminUsersPage() {
 
   // Invite
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: "", display_name: "", role: "viewer", password: "" });
+  const [inviteForm, setInviteForm] = useState({ email: "", display_name: "", role: "viewer", password: "", target_tenant_id: "" });
   const [inviting, setInviting] = useState(false);
 
   // Remove from org
@@ -196,19 +196,21 @@ export default function AdminUsersPage() {
   };
 
   const handleInvite = async () => {
-    if (!inviteForm.email.trim() || !selectedTenantId) return;
+    const targetTenant = inviteForm.target_tenant_id || selectedTenantId;
+    if (!inviteForm.email.trim() || !targetTenant) return;
     setInviting(true);
     try {
       let email = inviteForm.email.trim().toLowerCase();
       if (!email.includes("@")) email = `${email}@flowpulse.local`;
       const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: { email, display_name: inviteForm.display_name.trim(), role: inviteForm.role, password: inviteForm.password.trim() || undefined, target_tenant_id: selectedTenantId, mode: "link" },
+        body: { email, display_name: inviteForm.display_name.trim(), role: inviteForm.role, password: inviteForm.password.trim() || undefined, target_tenant_id: targetTenant, mode: "link" },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado", description: `${email} vinculado a "${tenant?.name ?? ""}".` });
+      const tName = tenants.find(t => t.id === targetTenant)?.name ?? "";
+      toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado", description: `${email} vinculado a "${tName}".` });
       setInviteOpen(false);
-      setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
+      setInviteForm({ email: "", display_name: "", role: "viewer", password: "", target_tenant_id: "" });
       await fetchData();
     } catch (err: any) {
       const desc = await getFunctionErrorMessage(err, "Falha ao convidar.");
@@ -447,12 +449,12 @@ export default function AdminUsersPage() {
             </TabsTrigger>
           </TabsList>
           {activeTab === "org" && (
-            <Button size="sm" onClick={() => setInviteOpen(true)} disabled={!selectedTenantId}>
+            <Button size="sm" onClick={() => { setInviteForm(f => ({ ...f, target_tenant_id: selectedTenantId || "" })); setInviteOpen(true); }} disabled={!selectedTenantId}>
               <Plus className="w-4 h-4 mr-1" /> Invite
             </Button>
           )}
           {activeTab === "all" && isSuperAdmin && (
-            <Button size="sm" onClick={() => { setActiveTab("org"); setInviteOpen(true); }} disabled={!selectedTenantId}>
+            <Button size="sm" onClick={() => { setInviteForm(f => ({ ...f, target_tenant_id: selectedTenantId || tenants[0]?.id || "" })); setInviteOpen(true); }}>
               <Plus className="w-4 h-4 mr-1" /> New user
             </Button>
           )}
@@ -499,9 +501,20 @@ export default function AdminUsersPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Adicionar Novo Usuário</DialogTitle>
-            <DialogDescription>Vinculado à organização: <strong>{tenant?.name ?? "nenhuma"}</strong>.</DialogDescription>
+            <DialogDescription>Vinculado à organização selecionada abaixo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {isSuperAdmin && tenants.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Organização *</Label>
+                <Select value={inviteForm.target_tenant_id || selectedTenantId || ""} onValueChange={(v) => setInviteForm((f) => ({ ...f, target_tenant_id: v }))}>
+                  <SelectTrigger className="bg-muted/50 border-border"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">E-mail *</Label>
               <Input value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} placeholder="admin ou usuario@empresa.com" className="bg-muted/50 border-border" />
@@ -532,7 +545,7 @@ export default function AdminUsersPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setInviteOpen(false)} disabled={inviting}>Cancelar</Button>
-            <Button onClick={handleInvite} disabled={inviting || !inviteForm.email.trim()}>
+            <Button onClick={handleInvite} disabled={inviting || !inviteForm.email.trim() || !(inviteForm.target_tenant_id || selectedTenantId)}>
               {inviting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />} Adicionar
             </Button>
           </DialogFooter>
