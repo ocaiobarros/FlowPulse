@@ -544,8 +544,10 @@ export default function AdminHub() {
   };
 
   const filteredProfiles = tenantProfiles.filter((p) => {
-    const term = search.toLowerCase();
-    const matchesSearch = (p.display_name?.toLowerCase().includes(term) ?? false) ||
+    const term = search.trim().toLowerCase();
+    const matchesSearch =
+      term === "" ||
+      (p.display_name?.toLowerCase().includes(term) ?? false) ||
       (p.email?.toLowerCase().includes(term) ?? false);
     const matchesRole = roleFilter === "all" || getRoleForUser(p.id) === roleFilter;
     return matchesSearch && matchesRole;
