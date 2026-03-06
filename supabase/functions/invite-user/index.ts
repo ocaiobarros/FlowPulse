@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
     const role = roleRaw as ValidRole;
     const email = String(emailRaw).trim().toLowerCase();
     const displayName = String(displayNameRaw || email.split("@")[0]).trim();
-    const mode = body?.mode === "link" ? "link" : "move"; // "link" = add to org without removing from current
+    const requestedMode = body?.mode === "move" ? "move" : "link"; // safer default: preserve memberships
 
     const targetTenant = (isSuperAdmin && targetTenantIdRaw) ? String(targetTenantIdRaw) : String(callerTenant);
 
@@ -277,6 +277,7 @@ Deno.serve(async (req) => {
     }
 
     const existingAuthUser = Boolean(userId);
+    const mode = existingAuthUser ? requestedMode : "move";
 
     if (!userId) {
       stage = "create_or_resolve_auth_user";

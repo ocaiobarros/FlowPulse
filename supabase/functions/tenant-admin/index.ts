@@ -84,6 +84,67 @@ Deno.serve(async (req) => {
       });
     }
 
+    /* ── MEMBERS ── */
+    if (action === "members") {
+      const tenantId = String(body?.tenant_id || "").trim();
+
+      stage = "list_member_roles";
+      const rolesBaseQuery = adminClient
+        .from("user_roles")
+        .select("id, user_id, tenant_id, role, created_at")
+        .order("created_at", { ascending: true });
+
+      const rolesQuery = tenantId
+        ? rolesBaseQuery.eq("tenant_id", tenantId)
+        : rolesBaseQuery;
+
+      const { data: memberRoles, error: rolesErr } = await rolesQuery;
+
+      if (rolesErr) {
+        return new Response(JSON.stringify({ error: rolesErr.message, stage }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const memberUserIds = [...new Set((memberRoles ?? []).map((row) => row.user_id).filter(Boolean))];
+
+      let memberProfiles: Array<{
+        id: string;
+        display_name: string | null;
+        email: string | null;
+        avatar_url: string | null;
+        tenant_id: string;
+        created_at: string;
+      }> = [];
+
+      if (memberUserIds.length > 0) {
+        stage = "list_member_profiles";
+        const { data: profilesData, error: profilesErr } = await adminClient
+          .from("profiles")
+          .select("id, display_name, email, avatar_url, tenant_id, created_at")
+          .in("id", memberUserIds)
+          .order("created_at", { ascending: true });
+
+        if (profilesErr) {
+          return new Response(JSON.stringify({ error: profilesErr.message, stage }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        memberProfiles = (profilesData ?? []) as typeof memberProfiles;
+      }
+
+      return new Response(JSON.stringify({
+        roles: memberRoles ?? [],
+        profiles: memberProfiles,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     /* ── DELETE ── */
     if (action === "delete") {
       const tenantId = String(body?.tenant_id || "").trim();

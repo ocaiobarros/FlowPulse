@@ -210,14 +210,16 @@ export default function AdminHub() {
         ? supabase.functions.invoke("tenant-admin", { body: { action: "list" } })
         : supabase.from("tenants").select("id, name, slug, created_at").order("created_at", { ascending: true });
 
-      const [tenantsRes, profilesRes, rolesRes] = await Promise.all([
-        tenantRequest,
-        supabase.from("profiles").select("*").order("created_at", { ascending: true }),
-        supabase.from("user_roles").select("*"),
-      ]);
-
       let allTenants: TenantInfo[] = [];
+      let nextProfiles: Profile[] = [];
+      let nextRoles: UserRole[] = [];
+
       if (superAdmin) {
+        const [tenantsRes, membersRes] = await Promise.all([
+          tenantRequest,
+          supabase.functions.invoke("tenant-admin", { body: { action: "members" } }),
+        ]);
+
         const { data, error } = tenantsRes as { data: any; error: any };
         if (error) {
           const parsed = await getFunctionErrorMessage(error, "Falha ao listar organizações.");
@@ -225,14 +227,39 @@ export default function AdminHub() {
         }
         if (data?.error) throw new Error(data.error);
         allTenants = (data?.tenants ?? []) as TenantInfo[];
+
+        if (membersRes.error) {
+          const parsed = await getFunctionErrorMessage(membersRes.error, "Falha ao listar membros.");
+          throw new Error(parsed);
+        }
+
+        const membersPayload = (membersRes.data ?? {}) as {
+          error?: string;
+          profiles?: Profile[];
+          roles?: UserRole[];
+        };
+
+        if (membersPayload.error) throw new Error(membersPayload.error);
+
+        nextProfiles = membersPayload.profiles ?? [];
+        nextRoles = membersPayload.roles ?? [];
       } else {
+        const [tenantsRes, profilesRes, rolesRes] = await Promise.all([
+          tenantRequest,
+          supabase.from("profiles").select("*").order("created_at", { ascending: true }),
+          supabase.from("user_roles").select("*"),
+        ]);
+
         const { data, error } = tenantsRes as { data: TenantInfo[] | null; error: { message: string } | null };
         if (error) throw new Error(error.message);
         allTenants = data ?? [];
-      }
 
-      if (profilesRes.error) throw profilesRes.error;
-      if (rolesRes.error) throw rolesRes.error;
+        if (profilesRes.error) throw profilesRes.error;
+        if (rolesRes.error) throw rolesRes.error;
+
+        nextProfiles = (profilesRes.data ?? []) as Profile[];
+        nextRoles = (rolesRes.data ?? []) as UserRole[];
+      }
 
       setTenants(allTenants);
       setSelectedTenantId((current) => {
@@ -243,8 +270,8 @@ export default function AdminHub() {
       });
       hasInitializedTenantSelection.current = allTenants.length > 0;
 
-      setProfiles(profilesRes.data ?? []);
-      setRoles((rolesRes.data ?? []) as UserRole[]);
+      setProfiles(nextProfiles);
+      setRoles(nextRoles);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Erro", description: err?.message || "Falha ao carregar dados." });
     } finally {
@@ -441,12 +468,6 @@ export default function AdminHub() {
         emailToSend = `${emailToSend}@flowpulse.local`;
       }
 
-      // Check if the user already exists in profiles — if so, use "link" mode to avoid moving them
-      const existingProfile = profiles.find(
-        (p) => (p.email ?? "").toLowerCase() === emailToSend
-      );
-      const useMode = existingProfile ? "link" : undefined; // undefined = default "move" for new users
-
       const { data, error } = await supabase.functions.invoke("invite-user", {
         body: {
           email: emailToSend,
@@ -454,7 +475,7 @@ export default function AdminHub() {
           role: inviteForm.role,
           password: inviteForm.password.trim() || undefined,
           target_tenant_id: selectedTenantId,
-          ...(useMode ? { mode: useMode } : {}),
+          mode: "link", // preserve existing memberships; backend handles new-user setup safely
         },
       });
 
@@ -464,12 +485,12 @@ export default function AdminHub() {
         throw new Error("A função de criação de usuário ainda não está implementada no backend local.");
       }
 
-      const msg = existingProfile
+      const existingUser = Boolean(data?.existing);
+      const msg = existingUser
         ? `${emailToSend} foi vinculado à organização "${tenant?.name ?? ""}".`
-        : inviteForm.password.trim()
-          ? `${emailToSend} criado com a senha definida.`
-          : `${emailToSend} foi adicionado ao time.`;
-      toast({ title: existingProfile ? "Usuário vinculado" : "Usuário adicionado", description: msg });
+        : `${emailToSend} foi criado e vinculado à organização "${tenant?.name ?? ""}".`;
+
+      toast({ title: existingUser ? "Usuário vinculado" : "Usuário adicionado", description: msg });
       setInviteOpen(false);
       setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
       await fetchData();
