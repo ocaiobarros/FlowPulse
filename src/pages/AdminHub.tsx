@@ -319,9 +319,13 @@ export default function AdminHub() {
     }
   }, [selectedTenantId, tenant?.name, tenant?.slug]);
 
-  const tenantRoles = roles.filter((r) => r.tenant_id === selectedTenantId);
   const profileById = new Map(profiles.map((p) => [p.id, p]));
-  const tenantProfiles = Array.from(new Map(tenantRoles.map((r) => [r.user_id, r])).values()).map((memberRole) => {
+
+  const selectedTenantRoles = selectedTenantId
+    ? roles.filter((r) => r.tenant_id === selectedTenantId)
+    : [];
+
+  const selectedTenantProfiles = Array.from(new Map(selectedTenantRoles.map((r) => [r.user_id, r])).values()).map((memberRole) => {
     const profile = profileById.get(memberRole.user_id);
     return {
       id: memberRole.user_id,
@@ -333,7 +337,34 @@ export default function AdminHub() {
     } satisfies Profile;
   });
 
-  const getRoleForUser = (userId: string) => tenantRoles.find((r) => r.user_id === userId)?.role ?? "viewer";
+  const usersScopeTenantId = isSuperAdmin
+    ? (usersTenantFilter === "all" ? null : usersTenantFilter)
+    : selectedTenantId;
+
+  const usersScopeRoles = usersScopeTenantId
+    ? roles.filter((r) => r.tenant_id === usersScopeTenantId)
+    : roles;
+
+  const userRows = Array.from(new Set(usersScopeRoles.map((r) => r.user_id))).map((userId) => {
+    const profile = profileById.get(userId);
+    const roleCreatedAt = usersScopeRoles.find((r) => r.user_id === userId)?.created_at;
+    return {
+      id: userId,
+      display_name: profile?.display_name ?? null,
+      email: profile?.email ?? null,
+      avatar_url: profile?.avatar_url ?? null,
+      tenant_id: usersScopeTenantId ?? profile?.tenant_id ?? "",
+      created_at: profile?.created_at ?? roleCreatedAt ?? new Date().toISOString(),
+    } satisfies Profile;
+  });
+
+  const getRoleForUser = (userId: string, tenantId?: string | null) => {
+    const targetTenantId = tenantId ?? selectedTenantId;
+    if (!targetTenantId) return null;
+    return roles.find((r) => r.user_id === userId && r.tenant_id === targetTenantId)?.role ?? null;
+  };
+
+  const getRolesForUserInScope = (userId: string) => usersScopeRoles.filter((r) => r.user_id === userId);
 
   const getRoleBadgeVariant = (role: string) => {
     if (role === "admin") return "default" as const;
