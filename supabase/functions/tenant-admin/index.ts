@@ -97,6 +97,36 @@ Deno.serve(async (req) => {
     if (action === "list") {
       stage = "list_tenants";
       const { data: allTenants, error: listErr } = await adminClient
+        .from("tenants")
+        .select("id, name, slug, created_at, updated_at")
+        .order("created_at", { ascending: false });
+
+      if (listErr) {
+        return new Response(JSON.stringify({ error: listErr.message, stage }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ tenants: allTenants ?? [] }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    /* ── MEMBERS ── */
+    if (action === "members") {
+      const tenantId = membersTenantScope ?? "";
+
+      stage = "list_member_roles";
+      const rolesBaseQuery = adminClient
+        .from("user_roles")
+        .select("id, user_id, tenant_id, role, created_at")
+        .order("created_at", { ascending: true });
+
+      const rolesQuery = tenantId
+        ? rolesBaseQuery.eq("tenant_id", tenantId)
+        : rolesBaseQuery;
 
       const { data: memberRoles, error: rolesErr } = await rolesQuery;
 
