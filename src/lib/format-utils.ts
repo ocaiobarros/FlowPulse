@@ -116,9 +116,21 @@ export function formatDynamicValue(
 
   // ── 2. Manual unit override (highest priority) ──
   if (manualUnit) {
-    // Even with manual unit, apply byte/uptime logic if the manual unit hints at it
     const mu = manualUnit.trim();
     return { display: num.toFixed(decimals), suffix: mu, numericValue: num };
+  }
+
+  // ── 2b. Unit Library ID (from UnitPicker) ──
+  if (unitId) {
+    const result = formatWithUnit(num, unitId, decimals);
+    return { display: result.display, suffix: result.suffix, numericValue: result.numericValue };
+  }
+
+  // ── 2c. Auto-map Zabbix unit to library ──
+  const autoMapped = zabbixUnit ? mapZabbixUnit(zabbixUnit) : null;
+  if (autoMapped && getUnitById(autoMapped)) {
+    const result = formatWithUnit(num, autoMapped, decimals);
+    return { display: result.display, suffix: result.suffix, numericValue: result.numericValue };
   }
 
   // ── 3. Auto-detect context ──
