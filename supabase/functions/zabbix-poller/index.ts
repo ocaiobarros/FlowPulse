@@ -529,7 +529,12 @@ Deno.serve(async (req) => {
     const password = await decryptPassword(
       conn.password_ciphertext, conn.password_iv, conn.password_tag, encryptionKey,
     );
-    const zabbixAuth = await zabbixLogin(conn.url, conn.username, password);
+
+    const redisUrl = Deno.env.get("UPSTASH_REDIS_REST_URL");
+    const redisToken = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
+
+    let zabbixAuth = await getZabbixAuth(conn.id, conn.url, conn.username, password, redisUrl, redisToken);
+    let sessionRetried = false;
 
     const pollerOriginTs = Date.now();
     const allTelemetry: TelemetryPayload[] = [];
