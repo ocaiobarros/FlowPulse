@@ -540,6 +540,33 @@ Deno.serve(async (req) => {
     const allTelemetry: TelemetryPayload[] = [];
     const errors: string[] = [];
 
+    /* ─── Clock Drift Detection ─────────────────────────
+     * Compare Zabbix server time with our own Date.now().
+     * Store offset so frontend can correct Time-to-Glass. */
+    let clockDriftMs: number | null = null;
+    try {
+      const zbxApiInfo = await zabbixCall(conn.url, zabbixAuth, "apiinfo.version", {}) as string;
+      // Fetch a single recent item to get Zabbix server clock
+      const serverItems = await zabbixCall(conn.url, zabbixAuth, "item.get", {
+        output: ["lastclock"],
+        sortfield: "lastclock",
+        sortorder: "DESC",
+        limit: 1,
+      }) as Array<Record<string, string>>;
+      if (serverItems?.length > 0 && serverItems[0].lastclock) {
+        const zabbixNowMs = parseInt(serverItems[0].lastclock) * 1000;
+        const ourNowMs = Date.now();
+        clockDriftMs = ourNowMs - zabbixNowMs;
+        if (Math.abs(clockDriftMs) > 5000) {
+          console.warn(`[zabbix-poller] CLOCK DRIFT DETECTED: ${clockDriftMs}ms (Zabbix is ${clockDriftMs > 0 ? 'behind' : 'ahead'})`);
+        } else {
+          console.log(`[zabbix-poller] Clock drift: ${clockDriftMs}ms (within tolerance)`);
+        }
+      }
+    } catch (driftErr) {
+      console.warn(`[zabbix-poller] Clock drift detection failed:`, driftErr instanceof Error ? driftErr.message : driftErr);
+    }
+
     await Promise.all(
       widgets.map(async (w) => {
         try {
@@ -565,6 +592,10 @@ Deno.serve(async (req) => {
             p.dashboard_id = dashboard_id;
             // Propagate origin timestamp for Time-to-Glass tracing
             (p as any).origin_ts = pollerOriginTs;
+            // Propagate clock drift for frontend correction
+            if (clockDriftMs !== null) {
+              (p as any).clock_drift_ms = clockDriftMs;
+            }
           }
           allTelemetry.push(...payloads);
         } catch (err) {
