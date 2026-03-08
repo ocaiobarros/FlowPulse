@@ -375,6 +375,15 @@ export default function AdminUsersPage() {
                     <Building2 className="w-4 h-4 mr-2" /> Vincular a Organização
                   </DropdownMenuItem>
                 )}
+                {!scopeTenantId && userTenants.length > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    const tIds = [...new Set(p._roles.map((r) => r.tenant_id))];
+                    setUnlinkDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário", userTenantIds: tIds });
+                    setUnlinkTargetTenant(tIds.length === 1 ? tIds[0] : "");
+                  }}>
+                    <UserX className="w-4 h-4 mr-2" /> Desvincular de Organização
+                  </DropdownMenuItem>
+                )}
                 {scopeTenantId && (
                   <DropdownMenuItem onClick={() => setRemoveDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário", tenantId: scopeTenantId })}>
                     <UserX className="w-4 h-4 mr-2" /> Remover da organização
