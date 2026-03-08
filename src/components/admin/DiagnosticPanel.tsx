@@ -40,6 +40,46 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
     setTests(prev => prev.map((t, i) => i === index ? { ...t, ...update } : t));
   }, []);
 
+  const extractFunctionError = useCallback(async (error: any) => {
+    const context = error?.context;
+
+    if (context?.clone && typeof context.clone === "function") {
+      try {
+        const json = await context.clone().json();
+        if (json && typeof json === "object") return JSON.stringify(json);
+      } catch {
+        // ignore
+      }
+
+      try {
+        const text = await context.clone().text();
+        if (text?.trim()) return text;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (typeof context?.json === "function") {
+      try {
+        const json = await context.json();
+        if (json && typeof json === "object") return JSON.stringify(json);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (typeof context?.text === "function") {
+      try {
+        const text = await context.text();
+        if (text?.trim()) return text;
+      } catch {
+        // ignore
+      }
+    }
+
+    return error?.message || "Erro desconhecido";
+  }, []);
+
   const runDiagnostics = useCallback(async () => {
     setRunning(true);
     const startAll = Date.now();
@@ -65,12 +105,27 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
       return;
     }
 
+    let availableTenants: { id: string; name: string }[] = [];
+    let targetTenant: string | null = null;
+    let tenantResolutionNote = "";
+
     // 2. Tenants
     const t1 = Date.now();
     try {
       const { data, error, count } = await supabase
         .from("tenants").select("id, name", { count: "exact" });
       if (error) throw error;
+
+      availableTenants = (data ?? []) as { id: string; name: string }[];
+      const selectedIsValid = Boolean(selectedTenantId && availableTenants.some((t) => t.id === selectedTenantId));
+      targetTenant = selectedIsValid
+        ? selectedTenantId
+        : (availableTenants[0]?.id ?? null);
+
+      if (selectedTenantId && !selectedIsValid) {
+        tenantResolutionNote = "selectedTenantId inválido no contexto atual; usando primeiro tenant disponível.";
+      }
+
       updateTest(1, {
         status: "pass",
         message: `${count ?? data?.length ?? 0} organização(ões) encontrada(s)`,
@@ -113,7 +168,6 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
 
     // 5. invite-user Edge Function
     const testEmail = `diag-${Date.now()}@flowpulse.test`;
-    const targetTenant = selectedTenantId || tenants[0]?.id;
     let createdUserId: string | null = null;
 
     const t4 = Date.now();
@@ -131,38 +185,42 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
       });
 
       if (error) {
-        // Extract response body from FunctionsHttpError
-        let errorBody = "";
-        try {
-          if (error.context && typeof error.context.json === "function") {
-            const body = await error.context.json();
-            errorBody = JSON.stringify(body);
-          } else if (error.context && typeof error.context.text === "function") {
-            errorBody = await error.context.text();
-          }
-        } catch { /* ignore parse errors */ }
-        throw new Error(
-          errorBody
-            ? `${error.name || "Error"}: ${errorBody}`
-            : (error.message || JSON.stringify(error))
-        );
+        const fnError = await extractFunctionError(error);
+        throw new Error(`${error?.name || "FunctionsError"}: ${fnError}`);
       }
-      if (data?.error) throw new Error(data.error);
+      if (data?.error) throw new Error(String(data.error));
 
-      createdUserId = data?.user_id || null;
+      createdUserId = typeof data?.user_id === "string" ? data.user_id : null;
 
       updateTest(4, {
         status: "pass",
-        message: data?.existing ? `Usuário existente vinculado` : `Usuário criado com sucesso`,
+        message: data?.existing ? "Usuário existente vinculado" : "Usuário criado com sucesso",
         duration: Date.now() - t4,
         details: `user_id: ${createdUserId}\nemail: ${testEmail}\nexisting: ${data?.existing}\nmoved: ${data?.moved}`,
       });
     } catch (e: any) {
+      let recoveredFromProfile = false;
+
+      try {
+        const { data: fallbackProfile } = await supabase
+          .from("profiles")
+          .select("id")
+          .ilike("email", testEmail)
+          .maybeSingle();
+
+        if (fallbackProfile?.id) {
+          createdUserId = fallbackProfile.id;
+          recoveredFromProfile = true;
+        }
+      } catch {
+        // ignore fallback lookup errors
+      }
+
       updateTest(4, {
         status: "fail",
         message: e.message,
         duration: Date.now() - t4,
-        details: `email_teste: ${testEmail}\ntarget_tenant: ${targetTenant}\nErro completo: ${e.message}`,
+        details: `email_teste: ${testEmail}\ntarget_tenant: ${targetTenant}\nErro completo: ${e.message}${tenantResolutionNote ? `\nobservação_tenant: ${tenantResolutionNote}` : ""}${recoveredFromProfile ? `\nuser_id_recuperado: ${createdUserId}` : ""}`,
       });
     }
 
@@ -170,6 +228,7 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
     const t5 = Date.now();
     try {
       if (!createdUserId) throw new Error("Usuário não foi criado no passo anterior");
+      if (!targetTenant) throw new Error("Tenant alvo inválido para validação");
 
       const { data: profile, error: pErr } = await supabase
         .from("profiles")
@@ -235,7 +294,7 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
 
     setLastRun(new Date().toLocaleTimeString("pt-BR"));
     setRunning(false);
-  }, [selectedTenantId, tenants, updateTest]);
+  }, [extractFunctionError, selectedTenantId, updateTest]);
 
   const passCount = tests.filter(t => t.status === "pass").length;
   const failCount = tests.filter(t => t.status === "fail").length;
