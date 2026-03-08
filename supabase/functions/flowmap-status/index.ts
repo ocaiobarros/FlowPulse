@@ -90,6 +90,21 @@ interface HostStatusResult {
   triggerProblem?: boolean;
 }
 
+function extractTenantIdFromClaims(claims: Record<string, unknown>): string | null {
+  const appMetadata = claims.app_metadata as Record<string, unknown> | undefined;
+  const tenantFromAppMetadata = appMetadata?.tenant_id;
+  if (typeof tenantFromAppMetadata === "string" && tenantFromAppMetadata.length > 0) {
+    return tenantFromAppMetadata;
+  }
+
+  const tenantFromRootClaim = claims.tenant_id;
+  if (typeof tenantFromRootClaim === "string" && tenantFromRootClaim.length > 0) {
+    return tenantFromRootClaim;
+  }
+
+  return null;
+}
+
 /* ─── Ring break detection (BFS) ─── */
 interface LinkRow {
   id: string;
@@ -409,6 +424,7 @@ Deno.serve(async (req) => {
   if (claimsErr || !claims?.claims) return json({ error: "Invalid token" }, 401);
 
   const userId = claims.claims.sub as string;
+  const tenantIdFromJwt = extractTenantIdFromClaims(claims.claims as Record<string, unknown>);
 
   try {
     const body = await req.json() as { map_id: string; connection_id: string };
@@ -416,11 +432,40 @@ Deno.serve(async (req) => {
     if (!map_id || !connection_id) return json({ error: "map_id and connection_id are required" }, 400);
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
-    const { data: tenantId } = await serviceClient.rpc("get_user_tenant_id", { p_user_id: userId });
-    if (!tenantId) return json({ error: "Tenant not found" }, 403);
+
+    const { data: tenantData } = await serviceClient.rpc("get_user_tenant_id", { p_user_id: userId });
+    let tenantId = (tenantData as string | null) ?? tenantIdFromJwt;
+
+    if (!tenantId) {
+      const { data: fallbackRole } = await serviceClient
+        .from("user_roles")
+        .select("tenant_id")
+        .eq("user_id", userId)
+        .limit(1)
+        .maybeSingle();
+      tenantId = fallbackRole?.tenant_id ?? null;
+    }
+
+    const { data: isSuperAdmin } = await serviceClient.rpc("is_super_admin", { p_user_id: userId });
+
+    if (!tenantId && !isSuperAdmin) return json({ error: "Tenant not found" }, 403);
+
+    let mapQuery = serviceClient
+      .from("flow_maps")
+      .select("id, tenant_id")
+      .eq("id", map_id);
+
+    if (!isSuperAdmin && tenantId) {
+      mapQuery = mapQuery.eq("tenant_id", tenantId);
+    }
+
+    const { data: mapRow, error: mapErr } = await mapQuery.maybeSingle();
+    if (mapErr || !mapRow) return json({ error: "Map not found or access denied" }, 403);
+
+    const resolvedTenantId = mapRow.tenant_id;
 
     // ─── Check in-memory cache ───
-    const cacheKey = `${tenantId}:${map_id}`;
+    const cacheKey = `${resolvedTenantId}:${map_id}`;
     const now = Date.now();
     const cached = statusCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
@@ -434,7 +479,7 @@ Deno.serve(async (req) => {
       .from("flow_map_hosts")
       .select("id, zabbix_host_id, host_name")
       .eq("map_id", map_id)
-      .eq("tenant_id", tenantId as string);
+      .eq("tenant_id", resolvedTenantId);
 
     if (hostsErr) return json({ error: `Hosts query failed: ${hostsErr.message}` }, 500);
     if (!hosts || hosts.length === 0) return json({ hosts: {}, impactedLinks: [], isolatedNodes: [], linkTraffic: {} });
@@ -444,16 +489,22 @@ Deno.serve(async (req) => {
       .from("flow_map_links")
       .select("id, origin_host_id, dest_host_id, is_ring, capacity_mbps, status_strategy, current_status")
       .eq("map_id", map_id)
-      .eq("tenant_id", tenantId as string);
+      .eq("tenant_id", resolvedTenantId);
 
-    // Fetch Zabbix connection
-    const { data: conn, error: connErr } = await supabase
+    // Fetch Zabbix connection (service role + tenant validation)
+    let connQuery = serviceClient
       .from("zabbix_connections")
-      .select("id, url, username, password_ciphertext, password_iv, password_tag, is_active")
-      .eq("id", connection_id)
-      .single();
+      .select("id, tenant_id, url, username, password_ciphertext, password_iv, password_tag, is_active")
+      .eq("id", connection_id);
 
-    if (connErr || !conn) return json({ error: "Connection not found" }, 404);
+    if (!isSuperAdmin) {
+      connQuery = connQuery.eq("tenant_id", resolvedTenantId);
+    }
+
+    const { data: conn, error: connErr } = await connQuery.maybeSingle();
+
+    if (connErr || !conn) return json({ error: "Connection not found or access denied" }, 403);
+    if (!isSuperAdmin && conn.tenant_id !== resolvedTenantId) return json({ error: "Connection tenant mismatch" }, 403);
     if (!conn.is_active) return json({ error: "Connection disabled" }, 400);
 
     // Decrypt & login
@@ -569,7 +620,7 @@ Deno.serve(async (req) => {
     const linkTraffic = await fetchLinkTraffic(
       serviceClient,
       typedLinks,
-      tenantId as string,
+      resolvedTenantId,
       conn.url,
       zabbixAuth,
     );
@@ -578,13 +629,13 @@ Deno.serve(async (req) => {
     const { data: activeEvents } = await serviceClient
       .from("flow_map_link_events")
       .select("id, link_id, status, started_at, ended_at, duration_seconds")
-      .eq("tenant_id", tenantId as string)
+      .eq("tenant_id", resolvedTenantId)
       .in("link_id", typedLinks.map((l) => l.id))
       .order("started_at", { ascending: false })
       .limit(100);
 
     // ─── SLA Transition Engine (fire-and-forget) ───
-    processLinkTransitions(serviceClient, typedLinks, resultByHostId, tenantId as string, linkStatusMap)
+    processLinkTransitions(serviceClient, typedLinks, resultByHostId, resolvedTenantId, linkStatusMap)
       .catch((err) => console.error("[flowmap-status] SLA transition error:", err));
 
     const responseData = {
@@ -623,7 +674,7 @@ Deno.serve(async (req) => {
         // Upsert cache row
         serviceClient.from("flow_map_effective_cache").upsert({
           map_id,
-          tenant_id: tenantId as string,
+          tenant_id: resolvedTenantId,
           payload: effData ?? [],
           computed_at: new Date().toISOString(),
           rpc_duration_ms: rpcDuration,

@@ -202,9 +202,9 @@ export function useFlowMapStatus({
       // After poll, fetch effective status from propagation engine
       await fetchEffectiveStatus();
 
-      // Broadcast data to passive tabs
+      // Broadcast data to passive tabs (scoped per map)
       try {
-        channelRef.current?.postMessage({ type: "status-data", payload });
+        channelRef.current?.postMessage({ type: "status-data", mapId, payload });
       } catch { /* channel may be closed */ }
 
       setError(null);
@@ -279,9 +279,11 @@ export function useFlowMapStatus({
   useEffect(() => {
     if (!canPoll) return;
 
+    const channelName = `${BROADCAST_CHANNEL_NAME}:${mapId}`;
+
     let bc: BroadcastChannel;
     try {
-      bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      bc = new BroadcastChannel(channelName);
     } catch {
       isLeaderRef.current = true;
       return;
@@ -310,7 +312,7 @@ export function useFlowMapStatus({
         }
       }
 
-      if (msg.type === "status-data" && !isLeaderRef.current && msg.payload) {
+      if (msg.type === "status-data" && !isLeaderRef.current && msg.payload && msg.mapId === mapId) {
         const hash = JSON.stringify(msg.payload);
         if (hash !== prevStatusRef.current) {
           prevStatusRef.current = hash;
@@ -356,7 +358,7 @@ export function useFlowMapStatus({
       try { bc.close(); } catch { /* ignore */ }
       channelRef.current = null;
     };
-  }, [canPoll, startPolling, stopPolling, scheduleRecompute]);
+  }, [canPoll, mapId, startPolling, stopPolling, scheduleRecompute]);
 
   // ─── Visibility change: pause/resume polling ───
   useEffect(() => {
