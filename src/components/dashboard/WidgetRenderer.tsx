@@ -193,42 +193,6 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
     }
   })();
 
-  // ── Action Link support ──
-  const actionUrl = (config?.actionUrl as string) || "";
-  const resolvedUrl = useMemo(() => {
-    if (!actionUrl) return "";
-    const extra = config?.extra as Record<string, unknown> | undefined;
-    // Interpolate variables: ${host_id}, ${value}, ${title}, ${key}, custom extra fields
-    let url = actionUrl;
-    const rawVal = entry ? extractRawValue(entry.data) : "";
-    url = url.replace(/\$\{value\}/g, encodeURIComponent(rawVal || ""));
-    url = url.replace(/\$\{title\}/g, encodeURIComponent(title));
-    url = url.replace(/\$\{key\}/g, encodeURIComponent(telemetryKey));
-    url = url.replace(/\$\{host_id\}/g, encodeURIComponent((extra?.zabbix_host_id as string) || ""));
-    url = url.replace(/\$\{host_name\}/g, encodeURIComponent((extra?.zabbix_host_name as string) || ""));
-    url = url.replace(/\$\{item_id\}/g, encodeURIComponent(telemetryKey.replace("zbx:item:", "")));
-    // Generic ${extra.X} interpolation
-    url = url.replace(/\$\{extra\.(\w+)\}/g, (_, key) => encodeURIComponent(String(extra?.[key] ?? "")));
-    return url;
-  }, [actionUrl, entry?.ts, title, telemetryKey, config]);
-
-  // ── Thresholds Engine ──
-  const thresholdConfig = (config?.thresholds as ThresholdConfig) || undefined;
-  const thresholdResult = useMemo(() => {
-    if (!thresholdConfig || !entry) return null;
-    const rawVal = extractRawValue(entry.data);
-    const num = rawVal !== null ? parseFloat(rawVal) : null;
-    return evaluateThresholds(num !== null && !isNaN(num) ? num : null, thresholdConfig);
-  }, [thresholdConfig, entry?.ts]);
-
-  const thresholdStyle: React.CSSProperties = thresholdResult && thresholdResult.stepIndex >= 0
-    ? {
-        backgroundColor: thresholdResult.bgColor + "22", // subtle fill
-        borderColor: thresholdResult.bgColor,
-        color: thresholdResult.textColor !== "inherit" ? thresholdResult.textColor : undefined,
-      }
-    : {};
-
   // Apply the same style envelope used in the Builder's WidgetPreviewCard
   const hasCustomStyle = Object.keys(styleConfig).length > 0;
 
