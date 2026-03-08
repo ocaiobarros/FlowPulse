@@ -294,7 +294,7 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
 
     setLastRun(new Date().toLocaleTimeString("pt-BR"));
     setRunning(false);
-  }, [selectedTenantId, tenants, updateTest]);
+  }, [extractFunctionError, selectedTenantId, updateTest]);
 
   const passCount = tests.filter(t => t.status === "pass").length;
   const failCount = tests.filter(t => t.status === "fail").length;
