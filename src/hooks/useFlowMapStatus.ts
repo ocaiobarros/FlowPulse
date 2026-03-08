@@ -279,9 +279,11 @@ export function useFlowMapStatus({
   useEffect(() => {
     if (!canPoll) return;
 
+    const channelName = `${BROADCAST_CHANNEL_NAME}:${mapId}`;
+
     let bc: BroadcastChannel;
     try {
-      bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      bc = new BroadcastChannel(channelName);
     } catch {
       isLeaderRef.current = true;
       return;
