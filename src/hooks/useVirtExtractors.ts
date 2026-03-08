@@ -600,6 +600,13 @@ export function extractVMwareGuestData(d: IdracData): VirtData {
     vmName = d.zabbixHostName || "";
   }
 
+  const committedStorageStr = get("Committed storage space");
+  const uncommittedStorageStr = get("Uncommitted storage space");
+  const diskUsedBytes = parseBytes(committedStorageStr || "0");
+  const diskUncommittedBytes = parseBytes(uncommittedStorageStr || "0");
+  const diskTotalBytes = diskUsedBytes + diskUncommittedBytes;
+  const diskPct = diskTotalBytes > 0 ? (diskUsedBytes / diskTotalBytes) * 100 : 0;
+
   const vm: VirtVM = {
     name: vmName,
     status: vmStatus,
@@ -608,6 +615,9 @@ export function extractVMwareGuestData(d: IdracData): VirtData {
     memTotal,
     memUsed: get("Guest memory usage") || get("Host memory usage"),
     memPercent: Math.min(memPct, 100),
+    diskTotal: diskTotalBytes > 0 ? String(diskTotalBytes) : "",
+    diskUsed: diskUsedBytes > 0 ? String(diskUsedBytes) : "",
+    diskPercent: Math.min(diskPct, 100),
     diskRead: totalDiskRead > 0 ? String(totalDiskRead) : "",
     diskWrite: totalDiskWrite > 0 ? String(totalDiskWrite) : "",
     netIn: totalNetIn > 0 ? String(totalNetIn) : "",
