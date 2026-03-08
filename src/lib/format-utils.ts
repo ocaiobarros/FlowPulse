@@ -1,7 +1,9 @@
 /**
  * Auto-suffix detection & smart formatting for Zabbix telemetry values.
  * Handles temperature, voltage, bytes, uptime, percentage, and custom units.
+ * Integrates with the Global Unit Library when a unitId is provided.
  */
+import { formatWithUnit, getUnitById, mapZabbixUnit } from "@/lib/unit-library";
 
 export interface FormattedValue {
   /** The formatted numeric string (or raw label for non-numeric values) */
