@@ -312,7 +312,7 @@ export function useFlowMapStatus({
         }
       }
 
-      if (msg.type === "status-data" && !isLeaderRef.current && msg.payload) {
+      if (msg.type === "status-data" && !isLeaderRef.current && msg.payload && msg.mapId === mapId) {
         const hash = JSON.stringify(msg.payload);
         if (hash !== prevStatusRef.current) {
           prevStatusRef.current = hash;
