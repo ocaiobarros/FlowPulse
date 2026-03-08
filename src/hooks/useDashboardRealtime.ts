@@ -9,6 +9,12 @@ export interface TelemetryCacheEntry {
   ts: number;
   v: number;
   receivedAt: number;
+  /** End-to-end latency in ms from source to browser (Time-to-Glass) */
+  latencyMs?: number;
+  /** Epoch ms when the original source received the event */
+  originTs?: number;
+  /** Epoch ms when the Reactor broadcast the event */
+  reactorTs?: number;
 }
 
 interface UseDashboardRealtimeOptions {
