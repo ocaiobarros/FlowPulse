@@ -10,15 +10,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
 import { useBatteryCrisis } from "@/hooks/useBatteryCrisis";
-import ReactGridLayout, { type Layout } from "react-grid-layout";
+import { Responsive, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
-
-/** Grid constants — MUST match DashboardBuilder exactly */
-const GRID_COLS = 24;
-const ROW_HEIGHT = 15;
-const GRID_MARGIN: [number, number] = [4, 4];
-const GRID_CONTAINER_PADDING: [number, number] = [0, 0];
+import {
+  GRID_BREAKPOINTS,
+  GRID_COLS as GRID_COLS_MAP,
+  GRID_ROW_HEIGHTS,
+  GRID_MARGIN,
+  GRID_CONTAINER_PADDING,
+  DEFAULT_COLS,
+  DEFAULT_ROW_HEIGHT,
+  activeBreakpoint,
+  scaleLayout,
+} from "@/lib/grid-config";
 
 
 const POLL_INTERVALS = [

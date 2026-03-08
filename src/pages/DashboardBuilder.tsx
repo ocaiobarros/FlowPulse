@@ -514,10 +514,10 @@ export default function DashboardBuilder() {
             ) : canvasWidth > 0 ? (
               <Responsive
                 width={canvasWidth}
-                layouts={{ lg: gridLayout }}
-                breakpoints={{ lg: 0 }}
-                cols={{ lg: config.settings.cols }}
-                rowHeight={config.settings.rowHeight}
+                layouts={responsiveLayouts}
+                breakpoints={GRID_BREAKPOINTS}
+                cols={GRID_COLS_MAP}
+                rowHeight={GRID_ROW_HEIGHTS[activeBreakpoint(canvasWidth)]}
                 draggableHandle=".widget-drag-handle"
                 onDrag={handleDragMove}
                 onDragStop={handleDragStop}
@@ -527,8 +527,8 @@ export default function DashboardBuilder() {
                 isResizable
                 compactType={null}
                 preventCollision
-                margin={[4, 4]}
-                containerPadding={[0, 0]}
+                margin={GRID_MARGIN}
+                containerPadding={GRID_CONTAINER_PADDING}
                 useCSSTransforms
               >
                 {config.widgets.map((widget) => (
