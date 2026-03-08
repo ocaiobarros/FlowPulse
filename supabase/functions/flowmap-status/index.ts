@@ -489,16 +489,22 @@ Deno.serve(async (req) => {
       .from("flow_map_links")
       .select("id, origin_host_id, dest_host_id, is_ring, capacity_mbps, status_strategy, current_status")
       .eq("map_id", map_id)
-      .eq("tenant_id", tenantId as string);
+      .eq("tenant_id", resolvedTenantId);
 
-    // Fetch Zabbix connection
-    const { data: conn, error: connErr } = await supabase
+    // Fetch Zabbix connection (service role + tenant validation)
+    let connQuery = serviceClient
       .from("zabbix_connections")
-      .select("id, url, username, password_ciphertext, password_iv, password_tag, is_active")
-      .eq("id", connection_id)
-      .single();
+      .select("id, tenant_id, url, username, password_ciphertext, password_iv, password_tag, is_active")
+      .eq("id", connection_id);
 
-    if (connErr || !conn) return json({ error: "Connection not found" }, 404);
+    if (!isSuperAdmin) {
+      connQuery = connQuery.eq("tenant_id", resolvedTenantId);
+    }
+
+    const { data: conn, error: connErr } = await connQuery.maybeSingle();
+
+    if (connErr || !conn) return json({ error: "Connection not found or access denied" }, 403);
+    if (!isSuperAdmin && conn.tenant_id !== resolvedTenantId) return json({ error: "Connection tenant mismatch" }, 403);
     if (!conn.is_active) return json({ error: "Connection disabled" }, 400);
 
     // Decrypt & login
