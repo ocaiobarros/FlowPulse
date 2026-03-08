@@ -44,6 +44,10 @@ export default function AdminUsersPage() {
   const [removeDialog, setRemoveDialog] = useState<{ open: boolean; userId: string; name: string; tenantId: string }>({ open: false, userId: "", name: "", tenantId: "" });
   const [removing, setRemoving] = useState(false);
 
+  // Unlink from org (All users tab — pick which org)
+  const [unlinkDialog, setUnlinkDialog] = useState<{ open: boolean; userId: string; name: string; userTenantIds: string[] }>({ open: false, userId: "", name: "", userTenantIds: [] });
+  const [unlinkTargetTenant, setUnlinkTargetTenant] = useState("");
+
   // Delete user permanently
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; userId: string; name: string }>({ open: false, userId: "", name: "" });
   const [deleting, setDeleting] = useState(false);
