@@ -297,6 +297,12 @@ export function extractProxmoxData(d: IdracData): VirtData {
       ? (parseBytes(memUsedStr) / parseBytes(memTotalStr)) * 100
       : 0;
 
+    const diskTotalStr = vmGet("Disk size") || vmGet("Disk, total") || vmGet("Storage limit");
+    const diskUsedStr = vmGet("Disk usage") || vmGet("Disk, used");
+    const diskPct = diskTotalStr && diskUsedStr
+      ? (parseBytes(diskUsedStr) / parseBytes(diskTotalStr)) * 100
+      : 0;
+
     // Try to find CPU usage in Hz for this VM
     let vmCpuHz = "";
     for (const [itemName, item] of d.items) {
