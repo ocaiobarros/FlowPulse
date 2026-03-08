@@ -92,9 +92,11 @@ export function formatDynamicValue(
     decimals?: number;
     /** If true, value is already a mapped label — skip math */
     isMappedLabel?: boolean;
+    /** Unit Library ID (e.g. "data_rate/bps") — takes priority over auto-detect */
+    unitId?: string;
   } = {},
 ): FormattedValue {
-  const { manualUnit, zabbixUnit, decimals = 2, isMappedLabel } = options;
+  const { manualUnit, zabbixUnit, decimals = 2, isMappedLabel, unitId } = options;
 
   // ── 1. Non-numeric / mapped labels: return as-is ──
   if (rawValue === null || rawValue === undefined) {
