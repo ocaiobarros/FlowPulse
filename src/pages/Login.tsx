@@ -45,7 +45,7 @@ export default function Login() {
         description: error.message,
       });
     } else {
-      navigate("/");
+      navigate(returnTo, { replace: true });
     }
     setLoading(false);
   };
