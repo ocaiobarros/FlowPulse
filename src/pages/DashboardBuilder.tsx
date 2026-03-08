@@ -3,6 +3,15 @@ import { generateUUID } from "@/lib/uuid";
 import { Responsive, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
+import {
+  GRID_BREAKPOINTS,
+  GRID_COLS as GRID_COLS_MAP,
+  GRID_ROW_HEIGHTS,
+  GRID_MARGIN,
+  GRID_CONTAINER_PADDING,
+  activeBreakpoint,
+  scaleLayout,
+} from "@/lib/grid-config";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -363,6 +372,16 @@ export default function DashboardBuilder() {
     minH: 1,
   }));
 
+  // Build responsive layouts by scaling base layout to each breakpoint's column count
+  const baseCols = config.settings.cols || 24;
+  const responsiveLayouts = useMemo(() => {
+    const result: Record<string, Layout[]> = {};
+    for (const [bp, cols] of Object.entries(GRID_COLS_MAP)) {
+      result[bp] = scaleLayout(gridLayout, baseCols, cols);
+    }
+    return result;
+  }, [gridLayout, baseCols]);
+
   const isLightTheme = (config.settings.category || "") === "cameras";
   const bgStyle: React.CSSProperties = config.settings.bgGradient
     ? { background: config.settings.bgGradient }
@@ -514,10 +533,10 @@ export default function DashboardBuilder() {
             ) : canvasWidth > 0 ? (
               <Responsive
                 width={canvasWidth}
-                layouts={{ lg: gridLayout }}
-                breakpoints={{ lg: 0 }}
-                cols={{ lg: config.settings.cols }}
-                rowHeight={config.settings.rowHeight}
+                layouts={responsiveLayouts}
+                breakpoints={GRID_BREAKPOINTS}
+                cols={GRID_COLS_MAP}
+                rowHeight={GRID_ROW_HEIGHTS[activeBreakpoint(canvasWidth)]}
                 draggableHandle=".widget-drag-handle"
                 onDrag={handleDragMove}
                 onDragStop={handleDragStop}
@@ -527,8 +546,8 @@ export default function DashboardBuilder() {
                 isResizable
                 compactType={null}
                 preventCollision
-                margin={[4, 4]}
-                containerPadding={[0, 0]}
+                margin={GRID_MARGIN}
+                containerPadding={GRID_CONTAINER_PADDING}
                 useCSSTransforms
               >
                 {config.widgets.map((widget) => (

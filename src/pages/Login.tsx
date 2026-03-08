@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, Navigate } from "react-router-dom";
+import { Link, useNavigate, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import AuthLayout from "@/components/auth/AuthLayout";
@@ -16,10 +16,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const location = useLocation();
+  const returnTo = (location.state as { from?: string })?.from || "/app/operations/home";
 
   // If already authenticated, redirect to app
   if (!authLoading && user) {
-    return <Navigate to="/app/operations/home" replace />;
+    return <Navigate to={returnTo} replace />;
   }
 
   const resolveEmail = (input: string): string => {
@@ -43,7 +45,7 @@ export default function Login() {
         description: error.message,
       });
     } else {
-      navigate("/");
+      navigate(returnTo, { replace: true });
     }
     setLoading(false);
   };

@@ -10,15 +10,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
 import { useBatteryCrisis } from "@/hooks/useBatteryCrisis";
-import ReactGridLayout, { type Layout } from "react-grid-layout";
+import { Responsive, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
-
-/** Grid constants — MUST match DashboardBuilder exactly */
-const GRID_COLS = 24;
-const ROW_HEIGHT = 15;
-const GRID_MARGIN: [number, number] = [4, 4];
-const GRID_CONTAINER_PADDING: [number, number] = [0, 0];
+import {
+  GRID_BREAKPOINTS,
+  GRID_COLS as GRID_COLS_MAP,
+  GRID_ROW_HEIGHTS,
+  GRID_MARGIN,
+  GRID_CONTAINER_PADDING,
+  DEFAULT_COLS,
+  DEFAULT_ROW_HEIGHT,
+  activeBreakpoint,
+  scaleLayout,
+} from "@/lib/grid-config";
 
 
 const POLL_INTERVALS = [
@@ -357,8 +362,8 @@ export default function DashboardView() {
             ) : (
               <ViewGrid
                 widgets={dashboard.widgets as any[]}
-                cols={(dashboard.settings as any)?.cols || GRID_COLS}
-                rowHeight={(dashboard.settings as any)?.rowHeight || ROW_HEIGHT}
+                baseCols={(dashboard.settings as any)?.cols || DEFAULT_COLS}
+                baseRowHeight={(dashboard.settings as any)?.rowHeight || DEFAULT_ROW_HEIGHT}
                 telemetryCache={telemetryCache}
                 onCritical={handleCritical}
               />
@@ -407,14 +412,14 @@ export default function DashboardView() {
 /** Extracted grid component so WidthProvider can measure correctly */
 function ViewGrid({
   widgets,
-  cols,
-  rowHeight,
+  baseCols,
+  baseRowHeight,
   telemetryCache,
   onCritical,
 }: {
   widgets: any[];
-  cols: number;
-  rowHeight: number;
+  baseCols: number;
+  baseRowHeight: number;
   telemetryCache: Map<string, any>;
   onCritical: (id: string) => void;
 }) {
@@ -433,7 +438,7 @@ function ViewGrid({
     return () => ro.disconnect();
   }, []);
 
-  const gridLayout: Layout[] = useMemo(
+  const baseLayout: Layout[] = useMemo(
     () =>
       widgets.map((w: any) => ({
         i: w.id,
@@ -446,14 +451,26 @@ function ViewGrid({
     [widgets],
   );
 
+  // Build responsive layouts by scaling base layout to each breakpoint
+  const responsiveLayouts = useMemo(() => {
+    const result: Record<string, Layout[]> = {};
+    for (const [bp, cols] of Object.entries(GRID_COLS_MAP)) {
+      result[bp] = scaleLayout(baseLayout, baseCols, cols).map((item) => ({ ...item, static: true }));
+    }
+    return result;
+  }, [baseLayout, baseCols]);
+
+  const bp = activeBreakpoint(containerWidth);
+
   return (
     <div ref={containerRef} style={{ width: '100%' }}>
       {containerWidth > 0 && (
-        <ReactGridLayout
+        <Responsive
           width={containerWidth}
-          layout={gridLayout}
-          cols={cols}
-          rowHeight={rowHeight}
+          layouts={responsiveLayouts}
+          breakpoints={GRID_BREAKPOINTS}
+          cols={GRID_COLS_MAP}
+          rowHeight={GRID_ROW_HEIGHTS[bp]}
           isDraggable={false}
           isResizable={false}
           compactType={null}
@@ -484,7 +501,7 @@ function ViewGrid({
               </div>
             );
           })}
-        </ReactGridLayout>
+        </Responsive>
       )}
     </div>
   );
