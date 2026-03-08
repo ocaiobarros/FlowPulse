@@ -68,13 +68,26 @@ export function useDashboardRealtime({
     // Drop older timestamps (backend guarantees monotonic per key)
     if (existing && existing.ts >= payload.ts) return;
 
+    const now = Date.now();
+    const originTs = payload.origin_ts;
+    const reactorTs = payload.reactor_ts;
+    const latencyMs = originTs ? now - originTs : undefined;
+
+    // Production perf alert: log if Time-to-Glass exceeds 1500ms
+    if (latencyMs !== undefined && latencyMs > 1500) {
+      console.warn(`[FlowPulse] HIGH LATENCY: ${payload.key} Time-to-Glass=${latencyMs}ms (origin→reactor=${reactorTs && originTs ? reactorTs - originTs : '?'}ms, reactor→browser=${reactorTs ? now - reactorTs : '?'}ms)`);
+    }
+
     cache.set(payload.key, {
       key: payload.key,
       type: payload.type,
       data: payload.data,
       ts: payload.ts,
       v: payload.v ?? 1,
-      receivedAt: Date.now(),
+      receivedAt: now,
+      latencyMs,
+      originTs,
+      reactorTs,
     });
 
     // Instant flush for priority keys (bypass buffer)

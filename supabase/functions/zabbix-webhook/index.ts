@@ -492,11 +492,16 @@ Deno.serve(async (req) => {
 
     console.log(`[zabbix-webhook] Processed event_id=${payload.event_id} host=${payload.host_name} status=${payload.status} alert=${alertResult.action} telegram=${telegramResult.ok}`);
 
+    const webhookProcessingMs = Date.now() - webhookReceivedAt;
+    console.log(`[zabbix-webhook] processing_time=${webhookProcessingMs}ms`);
+
     return json({
       received: true,
       event_id: payload.event_id,
       alert: alertResult,
       telegram: { sent: telegramResult.ok, error: telegramResult.error },
+      origin_ts: webhookReceivedAt,
+      processing_ms: webhookProcessingMs,
     });
   } catch (err) {
     console.error("[zabbix-webhook] error:", err);

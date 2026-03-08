@@ -463,6 +463,7 @@ Deno.serve(async (req) => {
       ...metricsToResponse(metrics),
       avg_broadcast_latency_ms: avgLatency,
       processing_time_ms: Date.now() - broadcastStart,
+      store_backend: backend,
       ...(errors.length > 0 ? { validation_errors: errors } : {}),
     });
   } catch (err) {
