@@ -3,6 +3,7 @@ import { useWidgetData } from "@/hooks/useWidgetData";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
 import type { TelemetryTimeseriesData, TelemetryStatData } from "@/types/telemetry";
 import { extractRawValue } from "@/lib/telemetry-utils";
+import { lttb } from "@/lib/lttb";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend } from "recharts";
 
 /** Auto-detect best unit based on max value */
