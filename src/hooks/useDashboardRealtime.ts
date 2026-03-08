@@ -15,6 +15,8 @@ export interface TelemetryCacheEntry {
   originTs?: number;
   /** Epoch ms when the Reactor broadcast the event */
   reactorTs?: number;
+  /** Clock drift between Zabbix server and FlowPulse server in ms */
+  clockDriftMs?: number;
 }
 
 interface UseDashboardRealtimeOptions {
@@ -85,7 +87,7 @@ export function useDashboardRealtime({
   const rejectedUnsignedRef = useRef(0);
 
   // Handle incoming broadcast
-  const handleBroadcast = useCallback((payload: TelemetryBroadcast & { _sig?: string }) => {
+  const handleBroadcast = useCallback((payload: TelemetryBroadcast & { _sig?: string; clock_drift_ms?: number }) => {
     // ── HMAC Integrity Gate: reject unsigned or malformed broadcasts ──
     if (!isValidSignature(payload._sig)) {
       rejectedUnsignedRef.current++;
@@ -104,11 +106,33 @@ export function useDashboardRealtime({
     const now = Date.now();
     const originTs = payload.origin_ts;
     const reactorTs = payload.reactor_ts;
-    const latencyMs = originTs ? now - originTs : undefined;
+    const clockDriftMs = payload.clock_drift_ms ?? null;
+
+    // ── Drift-corrected Time-to-Glass ──
+    // If we know the clock drift, subtract it from latency so the measurement
+    // reflects real processing time instead of clock difference between servers.
+    let latencyMs = originTs ? now - originTs : undefined;
+    if (latencyMs !== undefined && clockDriftMs !== null) {
+      latencyMs = latencyMs - clockDriftMs;
+      if (latencyMs < 0) latencyMs = 0; // clamp negative after correction
+    }
 
     // Production perf alert: log if Time-to-Glass exceeds 1500ms
     if (latencyMs !== undefined && latencyMs > 1500) {
-      console.warn(`[FlowPulse] HIGH LATENCY: ${payload.key} Time-to-Glass=${latencyMs}ms (origin→reactor=${reactorTs && originTs ? reactorTs - originTs : '?'}ms, reactor→browser=${reactorTs ? now - reactorTs : '?'}ms)`);
+      console.warn(`[FlowPulse] HIGH LATENCY: ${payload.key} Time-to-Glass=${latencyMs}ms (drift-corrected=${clockDriftMs}ms, origin→reactor=${reactorTs && originTs ? reactorTs - originTs : '?'}ms, reactor→browser=${reactorTs ? now - reactorTs : '?'}ms)`);
+    }
+
+    // ── Clock Drift Health Alert ──
+    if (clockDriftMs !== null && Math.abs(clockDriftMs) > 5000) {
+      try {
+        window.dispatchEvent(new CustomEvent("flowpulse:clock-drift", {
+          detail: {
+            driftMs: clockDriftMs,
+            detectedAt: now,
+            key: payload.key,
+          },
+        }));
+      } catch { /* ignore */ }
     }
 
     cache.set(payload.key, {
@@ -121,6 +145,7 @@ export function useDashboardRealtime({
       latencyMs,
       originTs,
       reactorTs,
+      clockDriftMs: clockDriftMs ?? undefined,
     });
 
     // Emit latency event for admin monitor widget
@@ -130,6 +155,7 @@ export function useDashboardRealtime({
           detail: {
             key: payload.key,
             timeToGlassMs: latencyMs,
+            clockDriftMs,
             originToReactorMs: originTs && reactorTs ? reactorTs - originTs : null,
             reactorToBrowserMs: reactorTs ? now - reactorTs : null,
             receivedAt: now,

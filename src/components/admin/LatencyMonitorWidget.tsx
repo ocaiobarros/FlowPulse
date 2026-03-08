@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Activity, Database, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Activity, AlertTriangle, Database, RefreshCw, Wifi, WifiOff, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface LatencySnapshot {
@@ -7,7 +7,14 @@ interface LatencySnapshot {
   timeToGlassMs: number;
   originToReactorMs: number | null;
   reactorToBrowserMs: number | null;
+  clockDriftMs?: number | null;
   receivedAt: number;
+}
+
+interface ClockDriftAlert {
+  driftMs: number;
+  detectedAt: number;
+  key: string;
 }
 
 interface ReactorHealth {
@@ -18,6 +25,7 @@ interface ReactorHealth {
 
 export default function LatencyMonitorWidget() {
   const [snapshots, setSnapshots] = useState<LatencySnapshot[]>([]);
+  const [clockDrift, setClockDrift] = useState<ClockDriftAlert | null>(null);
   const [health, setHealth] = useState<ReactorHealth>({
     storeBackend: "unknown",
     retryCount: 0,
@@ -79,14 +87,21 @@ export default function LatencyMonitorWidget() {
     };
   }, []);
 
-  // Also listen to all dashboard channels for live data
+  // Listen to live latency events from dashboard channels
   useEffect(() => {
     const handler = (event: CustomEvent<LatencySnapshot>) => {
       snapshotsRef.current = [event.detail, ...snapshotsRef.current].slice(0, maxSnapshots);
       setSnapshots([...snapshotsRef.current]);
     };
+    const driftHandler = (event: CustomEvent<ClockDriftAlert>) => {
+      setClockDrift(event.detail);
+    };
     window.addEventListener("flowpulse:latency" as any, handler as any);
-    return () => window.removeEventListener("flowpulse:latency" as any, handler as any);
+    window.addEventListener("flowpulse:clock-drift" as any, driftHandler as any);
+    return () => {
+      window.removeEventListener("flowpulse:latency" as any, handler as any);
+      window.removeEventListener("flowpulse:clock-drift" as any, driftHandler as any);
+    };
   }, []);
 
   // Compute averages
@@ -120,6 +135,24 @@ export default function LatencyMonitorWidget() {
           {recentSnapshots.length} amostras (60s)
         </span>
       </div>
+
+      {/* Clock Drift Alert Banner */}
+      {clockDrift && Math.abs(clockDrift.driftMs) > 5000 && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-500/40 bg-amber-500/10 animate-pulse">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-amber-300">
+              ⚠ Desvio de relógio detectado entre Zabbix e Intelligence
+            </p>
+            <p className="text-xs text-amber-400/80 font-mono mt-0.5">
+              Drift: {clockDrift.driftMs > 0 ? "+" : ""}{Math.round(clockDrift.driftMs / 1000)}s 
+              ({clockDrift.driftMs > 0 ? "Zabbix atrasado" : "Zabbix adiantado"}) 
+              • Detectado: {new Date(clockDrift.detectedAt).toLocaleTimeString()}
+            </p>
+          </div>
+          <Clock className="w-4 h-4 text-amber-400/60" />
+        </div>
+      )}
 
       {/* Main metrics row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
