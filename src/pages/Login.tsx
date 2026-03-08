@@ -16,10 +16,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const location = useLocation();
+  const returnTo = (location.state as { from?: string })?.from || "/app/operations/home";
 
   // If already authenticated, redirect to app
   if (!authLoading && user) {
-    return <Navigate to="/app/operations/home" replace />;
+    return <Navigate to={returnTo} replace />;
   }
 
   const resolveEmail = (input: string): string => {
