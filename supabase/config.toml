@@ -69,5 +69,8 @@ verify_jwt = false
 [functions.finance-import]
 verify_jwt = false
 
+[functions.tenant-admin]
+verify_jwt = false
+
 [functions.main]
 verify_jwt = false
