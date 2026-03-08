@@ -87,14 +87,21 @@ export default function LatencyMonitorWidget() {
     };
   }, []);
 
-  // Also listen to all dashboard channels for live data
+  // Listen to live latency events from dashboard channels
   useEffect(() => {
     const handler = (event: CustomEvent<LatencySnapshot>) => {
       snapshotsRef.current = [event.detail, ...snapshotsRef.current].slice(0, maxSnapshots);
       setSnapshots([...snapshotsRef.current]);
     };
+    const driftHandler = (event: CustomEvent<ClockDriftAlert>) => {
+      setClockDrift(event.detail);
+    };
     window.addEventListener("flowpulse:latency" as any, handler as any);
-    return () => window.removeEventListener("flowpulse:latency" as any, handler as any);
+    window.addEventListener("flowpulse:clock-drift" as any, driftHandler as any);
+    return () => {
+      window.removeEventListener("flowpulse:latency" as any, handler as any);
+      window.removeEventListener("flowpulse:clock-drift" as any, driftHandler as any);
+    };
   }, []);
 
   // Compute averages
