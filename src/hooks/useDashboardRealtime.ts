@@ -90,6 +90,21 @@ export function useDashboardRealtime({
       reactorTs,
     });
 
+    // Emit latency event for admin monitor widget
+    if (latencyMs !== undefined) {
+      try {
+        window.dispatchEvent(new CustomEvent("flowpulse:latency", {
+          detail: {
+            key: payload.key,
+            timeToGlassMs: latencyMs,
+            originToReactorMs: originTs && reactorTs ? reactorTs - originTs : null,
+            reactorToBrowserMs: reactorTs ? now - reactorTs : null,
+            receivedAt: now,
+          },
+        }));
+      } catch { /* ignore */ }
+    }
+
     // Instant flush for priority keys (bypass buffer)
     if (priorityKeysRef.current.some((pk) => payload.key === pk || payload.key.includes(pk))) {
       onUpdateRef.current(new Map(cache));
