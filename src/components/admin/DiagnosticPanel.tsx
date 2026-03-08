@@ -228,6 +228,7 @@ export default function DiagnosticPanel({ tenants, selectedTenantId }: Diagnosti
     const t5 = Date.now();
     try {
       if (!createdUserId) throw new Error("Usuário não foi criado no passo anterior");
+      if (!targetTenant) throw new Error("Tenant alvo inválido para validação");
 
       const { data: profile, error: pErr } = await supabase
         .from("profiles")
