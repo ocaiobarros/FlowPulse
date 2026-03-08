@@ -31,13 +31,30 @@ interface UseDashboardRealtimeOptions {
   priorityKeys?: string[];
   /** Called when a FORCE_POLL broadcast is received (e.g. from zabbix-webhook) */
   onForcePoll?: () => void;
+  /** Called on reconnect so the consumer can re-seed from replay */
+  onReconnect?: () => void;
+}
+
+/* ─── HMAC Signature Validation ─────────────────────────────────────
+ * The Reactor signs every DATA_UPDATE broadcast with HMAC-SHA256.
+ * Since the frontend cannot hold secrets, we perform a structural
+ * validation: _sig must be present and be a 64-char hex string.
+ * This blocks casual console injection attacks (channel.send() without sig).
+ * For full cryptographic verification, use the /verify-sig endpoint.
+ * ─────────────────────────────────────────────────────────────────── */
+const HMAC_SIG_REGEX = /^[0-9a-f]{64}$/;
+
+function isValidSignature(sig: unknown): boolean {
+  return typeof sig === "string" && HMAC_SIG_REGEX.test(sig);
 }
 
 /**
  * Hook: 1 Realtime channel per dashboard.
  * - Receives DATA_UPDATE broadcasts from the Reactor
+ * - Validates HMAC signature presence (integrity gate)
  * - Maintains a per-key cache with ts-based dedup (drop older — monotonic guaranteed by backend)
  * - Throttled flush to avoid render storms
+ * - Auto-reconciliation on WebSocket reconnect
  * - Supports warm start via seedCache() from replay endpoint
  */
 export function useDashboardRealtime({
@@ -48,6 +65,7 @@ export function useDashboardRealtime({
   onStatusChange,
   priorityKeys = [],
   onForcePoll,
+  onReconnect,
 }: UseDashboardRealtimeOptions) {
   const cacheRef = useRef<Map<string, TelemetryCacheEntry>>(new Map());
   const dirtyRef = useRef(false);
@@ -59,9 +77,24 @@ export function useDashboardRealtime({
   onStatusChangeRef.current = onStatusChange;
   const onForcePollRef = useRef(onForcePoll);
   onForcePollRef.current = onForcePoll;
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
+  /** Track if we've had an initial SUBSCRIBED — subsequent ones are reconnects */
+  const hasSubscribedOnceRef = useRef(false);
+  /** Count of rejected unsigned broadcasts (for telemetry) */
+  const rejectedUnsignedRef = useRef(0);
 
   // Handle incoming broadcast
-  const handleBroadcast = useCallback((payload: TelemetryBroadcast) => {
+  const handleBroadcast = useCallback((payload: TelemetryBroadcast & { _sig?: string }) => {
+    // ── HMAC Integrity Gate: reject unsigned or malformed broadcasts ──
+    if (!isValidSignature(payload._sig)) {
+      rejectedUnsignedRef.current++;
+      if (rejectedUnsignedRef.current <= 5) {
+        console.warn(`[FlowPulse] REJECTED unsigned broadcast for key=${payload.key} (total rejected: ${rejectedUnsignedRef.current})`);
+      }
+      return;
+    }
+
     const cache = cacheRef.current;
     const existing = cache.get(payload.key);
 
@@ -151,12 +184,14 @@ export function useDashboardRealtime({
   useEffect(() => {
     if (!enabled || !dashboardId) return;
 
+    hasSubscribedOnceRef.current = false;
+
     const channelName = `dashboard:${dashboardId}`;
     const channel = supabase
       .channel(channelName)
       .on("broadcast", { event: "DATA_UPDATE" }, (msg) => {
         if (msg.payload) {
-          handleBroadcast(msg.payload as TelemetryBroadcast);
+          handleBroadcast(msg.payload as TelemetryBroadcast & { _sig?: string });
         }
       })
       .on("broadcast", { event: "FORCE_POLL" }, () => {
@@ -165,6 +200,18 @@ export function useDashboardRealtime({
       })
       .subscribe((status) => {
         onStatusChangeRef.current?.(status);
+
+        if (status === "SUBSCRIBED") {
+          if (hasSubscribedOnceRef.current) {
+            // ── AUTO-RECONCILIATION on reconnect ──
+            // WebSocket reconnected after a drop — data may have been lost.
+            // Trigger replay + force poll to reconcile state.
+            console.log("[FlowPulse] WebSocket RECONNECTED — triggering auto-reconciliation");
+            onReconnectRef.current?.();
+            onForcePollRef.current?.();
+          }
+          hasSubscribedOnceRef.current = true;
+        }
       });
 
     return () => {
