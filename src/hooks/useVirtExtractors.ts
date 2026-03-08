@@ -55,6 +55,9 @@ export interface VirtVM {
   memTotal: string;
   memUsed: string;
   memPercent: number;
+  diskTotal?: string;
+  diskUsed?: string;
+  diskPercent?: number;
   diskRead: string;
   diskWrite: string;
   netIn: string;
