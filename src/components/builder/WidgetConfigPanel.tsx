@@ -535,6 +535,37 @@ export default function WidgetConfigPanel({ widget, onUpdate, onDelete, onClose,
               />
             </div>
 
+            {/* ── Unit Picker (Standard Options) ── */}
+            <div className="space-y-1.5 p-2 rounded-md border border-border/30 bg-accent/5">
+              <span className="text-[9px] font-display text-muted-foreground uppercase tracking-wider">📐 Standard Options</span>
+              <UnitPicker
+                value={(widget.extra?.unitId as string) || undefined}
+                zabbixUnit={(widget.extra?.zabbix_unit as string) || undefined}
+                onChange={(unitId) => onUpdate({ ...widget, extra: { ...widget.extra, unitId } })}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <span className="text-[9px] text-muted-foreground">Decimais</span>
+                  <Input
+                    type="number"
+                    value={(widget.extra?.decimals as number) ?? 2}
+                    onChange={(e) => onUpdate({ ...widget, extra: { ...widget.extra, decimals: parseInt(e.target.value) || 0 } })}
+                    className="h-6 text-[10px] font-mono"
+                    min={0} max={6}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[9px] text-muted-foreground">Unidade manual</span>
+                  <Input
+                    value={(widget.extra?.manualUnit as string) || ""}
+                    onChange={(e) => onUpdate({ ...widget, extra: { ...widget.extra, manualUnit: e.target.value } })}
+                    className="h-6 text-[10px] font-mono"
+                    placeholder="Livre (override)"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="h-px bg-border/30" />
 
             <div className="space-y-1.5">
