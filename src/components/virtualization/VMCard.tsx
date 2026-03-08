@@ -159,18 +159,28 @@ export default function VMCard({ vm, index }: Props) {
           <MiniBar value={vm.memPercent} color={memColor} bg="bg-muted/30" />
         </div>
 
-        {/* Bottom row: Network + Disk + Uptime */}
+        {/* Disk (if available) */}
+        {vm.diskTotal && vm.diskUsed && (
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <HardDrive className="w-2.5 h-2.5 text-muted-foreground/60" />
+                <span className="text-[8px] font-mono text-muted-foreground uppercase">DISK</span>
+              </div>
+              <span className="text-[9px] font-mono-data font-bold" style={{ color: memColor }}>
+                {formatBytes(vm.diskUsed)}<span className="text-muted-foreground/50 font-normal">/{formatBytes(vm.diskTotal)}</span>
+              </span>
+            </div>
+            <MiniBar value={vm.diskPercent || 0} color={memColor} bg="bg-muted/30" />
+          </div>
+        )}
+
+        {/* Bottom row: Network + Disk I/O + Uptime */}
         <div className="flex items-center justify-between pt-1 border-t border-border/20 flex-wrap gap-y-1">
           <div className="flex items-center gap-1.5" title="Network In / Out">
             <Network className="w-2.5 h-2.5 text-muted-foreground/40" />
             <span className="text-[8px] font-mono text-muted-foreground">
               {vm.netIn || "—"} <span className="text-muted-foreground/30">↕</span> {vm.netOut || "—"}
-            </span>
-          </div>
-          <div className="flex items-center gap-1" title="Disk I/O (Read / Write)">
-            <HardDrive className="w-2.5 h-2.5 text-muted-foreground/40" />
-            <span className="text-[8px] font-mono text-muted-foreground">
-              R:{vm.diskRead || "0"} <span className="text-muted-foreground/30">/</span> W:{vm.diskWrite || "0"}
             </span>
           </div>
           <div className="flex items-center gap-1" title="Uptime">

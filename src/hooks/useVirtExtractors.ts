@@ -55,6 +55,9 @@ export interface VirtVM {
   memTotal: string;
   memUsed: string;
   memPercent: number;
+  diskTotal?: string;
+  diskUsed?: string;
+  diskPercent?: number;
   diskRead: string;
   diskWrite: string;
   netIn: string;
@@ -294,6 +297,12 @@ export function extractProxmoxData(d: IdracData): VirtData {
       ? (parseBytes(memUsedStr) / parseBytes(memTotalStr)) * 100
       : 0;
 
+    const diskTotalStr = vmGet("Disk size") || vmGet("Disk, total") || vmGet("Storage limit");
+    const diskUsedStr = vmGet("Disk usage") || vmGet("Disk, used");
+    const diskPct = diskTotalStr && diskUsedStr
+      ? (parseBytes(diskUsedStr) / parseBytes(diskTotalStr)) * 100
+      : 0;
+
     // Try to find CPU usage in Hz for this VM
     let vmCpuHz = "";
     for (const [itemName, item] of d.items) {
@@ -318,6 +327,9 @@ export function extractProxmoxData(d: IdracData): VirtData {
       memTotal: memTotalStr,
       memUsed: memUsedStr,
       memPercent: Math.min(memPct, 100),
+      diskTotal: diskTotalStr,
+      diskUsed: diskUsedStr,
+      diskPercent: Math.min(diskPct, 100),
       diskRead: vmGet("Disk read, rate"),
       diskWrite: vmGet("Disk write, rate"),
       netIn: vmGet("Outgoing data, rate"),
@@ -588,6 +600,13 @@ export function extractVMwareGuestData(d: IdracData): VirtData {
     vmName = d.zabbixHostName || "";
   }
 
+  const committedStorageStr = get("Committed storage space");
+  const uncommittedStorageStr = get("Uncommitted storage space");
+  const diskUsedBytes = parseBytes(committedStorageStr || "0");
+  const diskUncommittedBytes = parseBytes(uncommittedStorageStr || "0");
+  const diskTotalBytes = diskUsedBytes + diskUncommittedBytes;
+  const diskPct = diskTotalBytes > 0 ? (diskUsedBytes / diskTotalBytes) * 100 : 0;
+
   const vm: VirtVM = {
     name: vmName,
     status: vmStatus,
@@ -596,6 +615,9 @@ export function extractVMwareGuestData(d: IdracData): VirtData {
     memTotal,
     memUsed: get("Guest memory usage") || get("Host memory usage"),
     memPercent: Math.min(memPct, 100),
+    diskTotal: diskTotalBytes > 0 ? String(diskTotalBytes) : "",
+    diskUsed: diskUsedBytes > 0 ? String(diskUsedBytes) : "",
+    diskPercent: Math.min(diskPct, 100),
     diskRead: totalDiskRead > 0 ? String(totalDiskRead) : "",
     diskWrite: totalDiskWrite > 0 ? String(totalDiskWrite) : "",
     netIn: totalNetIn > 0 ? String(totalNetIn) : "",
