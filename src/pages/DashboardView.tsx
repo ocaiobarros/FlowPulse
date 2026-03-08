@@ -509,3 +509,35 @@ function ViewGrid({
     </div>
   );
 }
+
+/** Shows the median Realtime Time-to-Glass latency from the telemetry cache */
+function RealtimeLatencyBadge({ telemetryCache }: { telemetryCache: Map<string, any> }) {
+  const [lagMs, setLagMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    const compute = () => {
+      const latencies: number[] = [];
+      for (const entry of telemetryCache.values()) {
+        if (typeof entry.latencyMs === "number" && entry.latencyMs >= 0) {
+          latencies.push(entry.latencyMs);
+        }
+      }
+      if (latencies.length === 0) { setLagMs(null); return; }
+      latencies.sort((a, b) => a - b);
+      setLagMs(Math.round(latencies[Math.floor(latencies.length / 2)]));
+    };
+    compute();
+    const id = setInterval(compute, 2000);
+    return () => clearInterval(id);
+  }, [telemetryCache]);
+
+  if (lagMs === null) return null;
+
+  const color = lagMs > 1500 ? "text-destructive" : lagMs > 500 ? "text-yellow-400" : "text-emerald-400";
+
+  return (
+    <span className={`text-[9px] font-mono ${color}`} title="Latência mediana Realtime (Time-to-Glass)">
+      Lag: {lagMs}ms
+    </span>
+  );
+}
