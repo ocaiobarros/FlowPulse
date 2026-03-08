@@ -3,6 +3,7 @@ import { useWidgetData } from "@/hooks/useWidgetData";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
 import type { TelemetryTimeseriesData, TelemetryStatData } from "@/types/telemetry";
 import { extractRawValue } from "@/lib/telemetry-utils";
+import { lttb } from "@/lib/lttb";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend } from "recharts";
 
 /** Auto-detect best unit based on max value */
@@ -12,6 +13,9 @@ function detectUnit(maxVal: number): { divisor: number; suffix: string } {
   if (maxVal >= 1_000) return { divisor: 1_000, suffix: " Kbps" };
   return { divisor: 1, suffix: " bps" };
 }
+
+/** Max points rendered per series — beyond this, LTTB downsampling kicks in */
+const MAX_RENDER_POINTS = 1000;
 
 interface SeriesConfig {
   itemid: string;
@@ -96,10 +100,15 @@ function TimeseriesWidgetInner({ telemetryKey, title, cache, config }: Props) {
       const tsData = entry.data as TelemetryTimeseriesData | null;
       if (!tsData?.points) return;
       const displayName = seriesDisplayMap.get(s.itemid)?.displayName || s.name;
-      for (const p of tsData.points) {
-        const rounded = roundToMinute(p.ts);
+
+      // LTTB downsample per series before merging
+      const raw = tsData.points.map((p) => ({ x: p.ts, y: p.value }));
+      const downsampled = lttb(raw, MAX_RENDER_POINTS);
+
+      for (const p of downsampled) {
+        const rounded = roundToMinute(p.x);
         const existing = allPoints.get(rounded) || {};
-        existing[displayName] = p.value;
+        existing[displayName] = p.y;
         allPoints.set(rounded, existing);
       }
     });
@@ -115,10 +124,13 @@ function TimeseriesWidgetInner({ telemetryKey, title, cache, config }: Props) {
   // Single-series: prefer timeseries points, fall back to scalar accumulation
   const singleChartData = useMemo(() => {
     if (ts?.points && ts.points.length > 0) {
-      // Full timeseries from backend — use it and sync buffer
-      const pts = ts.points.map((p) => ({
-        time: new Date(p.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        value: p.value,
+      // LTTB downsample before rendering
+      const raw = ts.points.map((p) => ({ x: p.ts, y: p.value }));
+      const downsampled = lttb(raw, MAX_RENDER_POINTS);
+
+      const pts = downsampled.map((p) => ({
+        time: new Date(p.x).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        value: p.y,
       }));
       bufferRef.current = pts.slice(-MAX_BUFFER_POINTS);
       lastBufferTsRef.current = ts.points[ts.points.length - 1]?.ts || 0;

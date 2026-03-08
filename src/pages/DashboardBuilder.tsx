@@ -268,14 +268,29 @@ export default function DashboardBuilder() {
     }));
   }, []);
 
-  // Save mutation
+  // AbortController for in-flight save cancellation on unmount
+  const saveAbortRef = useRef<AbortController | null>(null);
+
+  // Cleanup: abort any in-flight save when component unmounts
+  useEffect(() => {
+    return () => {
+      saveAbortRef.current?.abort();
+    };
+  }, []);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      // Cancel any previous in-flight save
+      saveAbortRef.current?.abort();
+      const controller = new AbortController();
+      saveAbortRef.current = controller;
       const { data: session } = await supabase.auth.getSession();
+      if (controller.signal.aborted) throw new DOMException("Save cancelled", "AbortError");
       if (!session?.session) throw new Error("Not authenticated");
 
       const userId = session.session.user.id;
       const { data: tenantData, error: tenantErr } = await supabase.rpc("get_user_tenant_id", { p_user_id: userId });
+      if (controller.signal.aborted) throw new DOMException("Save cancelled", "AbortError");
       if (tenantErr) throw tenantErr;
       const tenantId = tenantData as string | null;
       if (!tenantId) throw new Error("Tenant não identificado para o usuário autenticado");
@@ -359,6 +374,8 @@ export default function DashboardBuilder() {
       if (isNew && dashId) navigate(`/builder/${dashId}`, { replace: true });
     },
     onError: (err, _vars, context) => {
+      // Ignore AbortError — component unmounted, no UI to update
+      if (err instanceof DOMException && err.name === "AbortError") return;
       // Rollback optimistic update
       if (context?.previousData) {
         queryClient.setQueryData(["dashboard", dashboardId], context.previousData);
