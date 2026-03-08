@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdmin, getFunctionErrorMessage, type Profile, type UserRole } from "./AdminContext";
 import { useToast } from "@/hooks/use-toast";
