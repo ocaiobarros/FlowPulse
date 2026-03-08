@@ -372,6 +372,16 @@ export default function DashboardBuilder() {
     minH: 1,
   }));
 
+  // Build responsive layouts by scaling base layout to each breakpoint's column count
+  const baseCols = config.settings.cols || 24;
+  const responsiveLayouts = useMemo(() => {
+    const result: Record<string, Layout[]> = {};
+    for (const [bp, cols] of Object.entries(GRID_COLS_MAP)) {
+      result[bp] = scaleLayout(gridLayout, baseCols, cols);
+    }
+    return result;
+  }, [gridLayout, baseCols]);
+
   const isLightTheme = (config.settings.category || "") === "cameras";
   const bgStyle: React.CSSProperties = config.settings.bgGradient
     ? { background: config.settings.bgGradient }
