@@ -451,6 +451,12 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify(allTelemetry),
       });
+
+      if (!resp.ok) {
+        const reactorError = await resp.text().catch(() => "");
+        throw new Error(`Reactor request failed (${resp.status}): ${reactorError || resp.statusText}`);
+      }
+
       reactorResult = await resp.json();
     }
 
