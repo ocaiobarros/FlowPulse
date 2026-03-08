@@ -19,6 +19,10 @@ import { Trash2, X, Search, Palette, Type, Sparkles, Database, Settings2, ImageI
 import ZabbixItemBrowser from "./ZabbixItemBrowser";
 import ColorMapEditor from "./ColorMapEditor";
 import UnitPicker from "./UnitPicker";
+import ThresholdEditor from "./ThresholdEditor";
+import FieldOverrideEditor from "./FieldOverrideEditor";
+import type { ThresholdConfig } from "@/lib/threshold-engine";
+import type { FieldOverrideRule } from "./FieldOverrideEditor";
 import { Icon } from "@iconify/react";
 
 interface Props {
