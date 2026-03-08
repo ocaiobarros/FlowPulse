@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdmin, getFunctionErrorMessage, type Profile, type UserRole } from "./AdminContext";
 import { useToast } from "@/hooks/use-toast";
@@ -402,28 +403,21 @@ export default function AdminUsersPage() {
     );
   };
 
-  const renderTable = (list: typeof allUserProfiles, scopeTenantId: string | null) => (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Usuário</th>
-            <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">E-mail</th>
-            {!scopeTenantId && <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Belongs to</th>}
-            <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
-            <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</th>
-            <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((p) => renderUserRow(p, scopeTenantId))}
-          {list.length === 0 && (
-            <tr><td colSpan={scopeTenantId ? 5 : 6} className="px-4 py-8 text-center text-muted-foreground">Nenhum usuário encontrado.</td></tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
+  const renderTable = (list: typeof allUserProfiles, scopeTenantId: string | null) => {
+    const VIRTUALIZE_THRESHOLD = 30;
+    const ROW_EST = 52;
+    const useVirtual = list.length > VIRTUALIZE_THRESHOLD;
+
+    return (
+      <VirtualizedAdminTable
+        list={list}
+        scopeTenantId={scopeTenantId}
+        renderUserRow={renderUserRow}
+        useVirtual={useVirtual}
+        rowEstimate={ROW_EST}
+      />
+    );
+  };
 
   const renderFilters = (showOrgFilter: boolean) => (
     <div className="flex items-center gap-2 flex-wrap">
@@ -744,6 +738,94 @@ export default function AdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** Extracted table component with optional virtualization */
+function VirtualizedAdminTable({
+  list,
+  scopeTenantId,
+  renderUserRow,
+  useVirtual,
+  rowEstimate,
+}: {
+  list: any[];
+  scopeTenantId: string | null;
+  renderUserRow: (p: any, scopeTenantId: string | null) => React.ReactNode;
+  useVirtual: boolean;
+  rowEstimate: number;
+}) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: list.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => rowEstimate,
+    overscan: 8,
+    enabled: useVirtual,
+  });
+
+  const headerCells = (
+    <tr className="border-b border-border">
+      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Usuário</th>
+      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">E-mail</th>
+      {!scopeTenantId && <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Belongs to</th>}
+      <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
+      <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desde</th>
+      <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ações</th>
+    </tr>
+  );
+
+  if (!useVirtual) {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>{headerCells}</thead>
+          <tbody>
+            {list.map((p) => renderUserRow(p, scopeTenantId))}
+            {list.length === 0 && (
+              <tr><td colSpan={scopeTenantId ? 5 : 6} className="px-4 py-8 text-center text-muted-foreground">Nenhum usuário encontrado.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>{headerCells}</thead>
+      </table>
+      <div ref={parentRef} className="max-h-[60vh] overflow-auto">
+        <table className="w-full text-sm">
+          <tbody style={{ height: virtualizer.getTotalSize(), position: "relative", display: "block" }}>
+            {virtualizer.getVirtualItems().map((vRow) => (
+              <tr
+                key={vRow.index}
+                data-index={vRow.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${vRow.start}px)`,
+                  display: "table-row",
+                }}
+              >
+                {/* Re-render the user row content inline */}
+                {(() => {
+                  const node = renderUserRow(list[vRow.index], scopeTenantId);
+                  // renderUserRow returns a <tr>, extract its children
+                  return node && typeof node === "object" && "props" in node ? node.props.children : node;
+                })()}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
