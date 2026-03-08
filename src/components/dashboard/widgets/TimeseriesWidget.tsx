@@ -14,6 +14,9 @@ function detectUnit(maxVal: number): { divisor: number; suffix: string } {
   return { divisor: 1, suffix: " bps" };
 }
 
+/** Max points rendered per series — beyond this, LTTB downsampling kicks in */
+const MAX_RENDER_POINTS = 1000;
+
 interface SeriesConfig {
   itemid: string;
   name: string;
