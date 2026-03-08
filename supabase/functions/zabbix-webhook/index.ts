@@ -468,6 +468,7 @@ Deno.serve(async (req) => {
             event_id: payload.event_id,
             host_name: payload.host_name,
             ts: Date.now(),
+            origin_ts: webhookReceivedAt,
           },
         });
         await supabase.removeChannel(ch);
