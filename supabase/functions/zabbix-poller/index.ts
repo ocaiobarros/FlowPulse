@@ -35,11 +35,17 @@ async function decryptPassword(ct: string, iv: string, tag: string, key: string)
   return new TextDecoder().decode(decrypted);
 }
 
-/* ─── Zabbix JSON-RPC ────────────────────────────── */
+/* ─── Zabbix JSON-RPC (with keep-alive) ──────────── */
+const ZABBIX_FETCH_OPTS: Partial<RequestInit> = {
+  keepalive: true,
+  headers: { "Content-Type": "application/json", "Connection": "keep-alive" },
+};
+
 async function zabbixLogin(url: string, username: string, password: string): Promise<string> {
   const res = await fetch(`${url}/api_jsonrpc.php`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    ...ZABBIX_FETCH_OPTS,
+    headers: { ...ZABBIX_FETCH_OPTS.headers as Record<string, string> },
     body: JSON.stringify({ jsonrpc: "2.0", method: "user.login", params: { username, password }, id: 1 }),
     signal: AbortSignal.timeout(15_000),
   });
@@ -51,7 +57,8 @@ async function zabbixLogin(url: string, username: string, password: string): Pro
 async function zabbixCall(url: string, auth: string, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
   const res = await fetch(`${url}/api_jsonrpc.php`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    ...ZABBIX_FETCH_OPTS,
+    headers: { ...ZABBIX_FETCH_OPTS.headers as Record<string, string> },
     body: JSON.stringify({ jsonrpc: "2.0", method, params, auth, id: 2 }),
     signal: AbortSignal.timeout(30_000),
   });
@@ -61,7 +68,7 @@ async function zabbixCall(url: string, auth: string, method: string, params: Rec
     throw new Error(`Zabbix ${method}: empty response (HTTP ${res.status})`);
   }
 
-  let data: { error?: unknown; result?: unknown };
+  let data: { error?: { data?: string; message?: string }; result?: unknown };
   try {
     data = JSON.parse(raw);
   } catch {
@@ -71,8 +78,115 @@ async function zabbixCall(url: string, auth: string, method: string, params: Rec
   if (!res.ok) {
     throw new Error(`Zabbix ${method}: HTTP ${res.status}`);
   }
-  if (data.error) throw new Error(`Zabbix ${method}: ${JSON.stringify(data.error)}`);
+  if (data.error) {
+    // Detect session errors so caller can invalidate cached token
+    const errMsg = JSON.stringify(data.error);
+    if (errMsg.includes("Session") || errMsg.includes("re-login") || errMsg.includes("Not authorised")) {
+      const err = new Error(`Zabbix ${method}: ${errMsg}`);
+      (err as any).isSessionError = true;
+      throw err;
+    }
+    throw new Error(`Zabbix ${method}: ${errMsg}`);
+  }
   return data.result;
+}
+
+/* ─── Zabbix Token Cache (Upstash Redis) ─────────── */
+const ZABBIX_TOKEN_TTL_S = 900; // 15 minutes
+const ZABBIX_TOKEN_FETCH_TIMEOUT_MS = 3000;
+
+async function getCachedZabbixToken(
+  connId: string,
+  redisUrl: string | undefined,
+  redisToken: string | undefined,
+): Promise<string | null> {
+  if (!redisUrl || !redisToken) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ZABBIX_TOKEN_FETCH_TIMEOUT_MS);
+    const resp = await fetch(`${redisUrl.replace(/\/$/, "")}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${redisToken}`, "Content-Type": "application/json", "Connection": "keep-alive" },
+      body: JSON.stringify([["GET", `zabbix:session:${connId}`]]),
+      signal: controller.signal,
+      keepalive: true,
+    });
+    clearTimeout(timer);
+    const results = await resp.json();
+    const token = results?.[0]?.result;
+    if (typeof token === "string" && token.length > 5) {
+      console.log(`[zabbix-poller] cache HIT for conn=${connId}`);
+      return token;
+    }
+    return null;
+  } catch (err) {
+    console.warn(`[zabbix-poller] Redis GET failed, will login: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
+async function setCachedZabbixToken(
+  connId: string,
+  token: string,
+  redisUrl: string | undefined,
+  redisToken: string | undefined,
+): Promise<void> {
+  if (!redisUrl || !redisToken) return;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ZABBIX_TOKEN_FETCH_TIMEOUT_MS);
+    await fetch(`${redisUrl.replace(/\/$/, "")}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${redisToken}`, "Content-Type": "application/json", "Connection": "keep-alive" },
+      body: JSON.stringify([["SET", `zabbix:session:${connId}`, token, "EX", String(ZABBIX_TOKEN_TTL_S)]]),
+      signal: controller.signal,
+      keepalive: true,
+    });
+    clearTimeout(timer);
+    console.log(`[zabbix-poller] cached token for conn=${connId} (TTL=${ZABBIX_TOKEN_TTL_S}s)`);
+  } catch (err) {
+    console.warn(`[zabbix-poller] Redis SET failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+async function invalidateCachedZabbixToken(
+  connId: string,
+  redisUrl: string | undefined,
+  redisToken: string | undefined,
+): Promise<void> {
+  if (!redisUrl || !redisToken) return;
+  try {
+    await fetch(`${redisUrl.replace(/\/$/, "")}/pipeline`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${redisToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify([["DEL", `zabbix:session:${connId}`]]),
+      signal: AbortSignal.timeout(ZABBIX_TOKEN_FETCH_TIMEOUT_MS),
+      keepalive: true,
+    });
+  } catch { /* best effort */ }
+}
+
+/** Get Zabbix auth token — from cache or fresh login with caching */
+async function getZabbixAuth(
+  connId: string,
+  url: string,
+  username: string,
+  password: string,
+  redisUrl: string | undefined,
+  redisToken: string | undefined,
+): Promise<string> {
+  // 1. Try cache
+  const cached = await getCachedZabbixToken(connId, redisUrl, redisToken);
+  if (cached) return cached;
+
+  // 2. Fresh login
+  console.log(`[zabbix-poller] cache MISS for conn=${connId}, logging in…`);
+  const freshToken = await zabbixLogin(url, username, password);
+
+  // 3. Store in cache (async, don't block)
+  setCachedZabbixToken(connId, freshToken, redisUrl, redisToken);
+
+  return freshToken;
 }
 
 /* ─── Time-range to seconds ──────────────────────── */
