@@ -362,8 +362,8 @@ export default function DashboardView() {
             ) : (
               <ViewGrid
                 widgets={dashboard.widgets as any[]}
-                cols={(dashboard.settings as any)?.cols || GRID_COLS}
-                rowHeight={(dashboard.settings as any)?.rowHeight || ROW_HEIGHT}
+                baseCols={(dashboard.settings as any)?.cols || DEFAULT_COLS}
+                baseRowHeight={(dashboard.settings as any)?.rowHeight || DEFAULT_ROW_HEIGHT}
                 telemetryCache={telemetryCache}
                 onCritical={handleCritical}
               />
