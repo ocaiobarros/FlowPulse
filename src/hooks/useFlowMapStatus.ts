@@ -202,9 +202,9 @@ export function useFlowMapStatus({
       // After poll, fetch effective status from propagation engine
       await fetchEffectiveStatus();
 
-      // Broadcast data to passive tabs
+      // Broadcast data to passive tabs (scoped per map)
       try {
-        channelRef.current?.postMessage({ type: "status-data", payload });
+        channelRef.current?.postMessage({ type: "status-data", mapId, payload });
       } catch { /* channel may be closed */ }
 
       setError(null);
