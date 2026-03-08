@@ -159,10 +159,46 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
     }
   })();
 
+  // ── Action Link support ──
+  const actionUrl = (config?.actionUrl as string) || "";
+  const resolvedUrl = useMemo(() => {
+    if (!actionUrl) return "";
+    const extra = config?.extra as Record<string, unknown> | undefined;
+    // Interpolate variables: ${host_id}, ${value}, ${title}, ${key}, custom extra fields
+    let url = actionUrl;
+    const rawVal = entry ? extractRawValue(entry.data) : "";
+    url = url.replace(/\$\{value\}/g, encodeURIComponent(rawVal || ""));
+    url = url.replace(/\$\{title\}/g, encodeURIComponent(title));
+    url = url.replace(/\$\{key\}/g, encodeURIComponent(telemetryKey));
+    url = url.replace(/\$\{host_id\}/g, encodeURIComponent((extra?.zabbix_host_id as string) || ""));
+    url = url.replace(/\$\{host_name\}/g, encodeURIComponent((extra?.zabbix_host_name as string) || ""));
+    url = url.replace(/\$\{item_id\}/g, encodeURIComponent(telemetryKey.replace("zbx:item:", "")));
+    // Generic ${extra.X} interpolation
+    url = url.replace(/\$\{extra\.(\w+)\}/g, (_, key) => encodeURIComponent(String(extra?.[key] ?? "")));
+    return url;
+  }, [actionUrl, entry?.ts, title, telemetryKey, config]);
+
+  // ── Thresholds Engine ──
+  const thresholdConfig = (config?.thresholds as ThresholdConfig) || undefined;
+  const thresholdResult = useMemo(() => {
+    if (!thresholdConfig || !entry) return null;
+    const rawVal = extractRawValue(entry.data);
+    const num = rawVal !== null ? parseFloat(rawVal) : null;
+    return evaluateThresholds(num !== null && !isNaN(num) ? num : null, thresholdConfig);
+  }, [thresholdConfig, entry?.ts]);
+
+  const thresholdStyle: React.CSSProperties = thresholdResult && thresholdResult.stepIndex >= 0
+    ? {
+        backgroundColor: thresholdResult.bgColor + "22", // subtle fill
+        borderColor: thresholdResult.bgColor,
+        color: thresholdResult.textColor !== "inherit" ? thresholdResult.textColor : undefined,
+      }
+    : {};
+
   // Apply the same style envelope used in the Builder's WidgetPreviewCard
   const hasCustomStyle = Object.keys(styleConfig).length > 0;
 
-  return (
+  const content = (
     <div ref={containerRef} className={`${wrapperClass} relative`} style={containStyle}>
       {/* Sync pulse dot with latency tooltip — yellow if >3s latency */}
       {showPulse && entry && (() => {
@@ -184,15 +220,44 @@ function WidgetRendererInner({ widgetType, widgetId, telemetryKey, title, cache,
       {hasCustomStyle ? (
         <div
           className={`h-full w-full rounded-lg border border-border/50 overflow-hidden ${glassClass}`}
-          style={{ ...customCSS, borderStyle: "solid" }}
+          style={{ ...customCSS, ...thresholdStyle, borderStyle: "solid" }}
         >
           {inner}
         </div>
       ) : (
-        inner
+        <div className="h-full" style={thresholdStyle}>
+          {inner}
+        </div>
+      )}
+      {/* Action link indicator */}
+      {resolvedUrl && (
+        <div className="absolute bottom-1 right-1 opacity-40 hover:opacity-80 transition-opacity">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+        </div>
       )}
     </div>
   );
+
+  // Wrap in <a> tag if action URL is configured
+  if (resolvedUrl) {
+    return (
+      <a
+        href={resolvedUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block h-full no-underline text-inherit hover:ring-1 hover:ring-primary/30 rounded-lg transition-all"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return content;
 }
 
 const WidgetRenderer = memo(WidgetRendererInner);
