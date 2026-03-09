@@ -2,10 +2,11 @@ import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Printer, ArrowLeft, Save, Settings2, Loader2, Search,
+  Printer, Search,
   AlertTriangle, FileText, Eye, EyeOff, ExternalLink, Calendar, Edit2, Check, X,
-  BarChart3,
+  BarChart3, Loader2,
 } from "lucide-react";
+import MonitoringHeader, { useKioskMode } from "@/components/layout/MonitoringHeader";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import UsageHeatmap from "@/components/printer/UsageHeatmap";
 import { Button } from "@/components/ui/button";
