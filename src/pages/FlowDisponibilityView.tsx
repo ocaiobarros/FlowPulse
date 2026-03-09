@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { ArrowLeft, RefreshCw, Loader2, Activity } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ArrowLeft, RefreshCw, Loader2, Activity, Save, Settings,
+  Maximize2, Minimize2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -11,11 +14,31 @@ import HostAvailCard from "@/components/flowdisp/HostAvailCard";
 
 export default function FlowDisponibilityView() {
   const { dashboardId } = useParams<{ dashboardId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [config, setConfig] = useState<FlowDispConfig | null>(null);
   const [panelName, setPanelName] = useState<string | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Kiosk mode
+  const kioskFromUrl = searchParams.get("kiosk") === "true";
+  const [isKiosk, setIsKiosk] = useState(kioskFromUrl);
+  useEffect(() => {
+    if (kioskFromUrl) setIsKiosk(true);
+  }, [kioskFromUrl]);
+  const toggleKiosk = useCallback(() => setIsKiosk((k) => !k), []);
+
+  // Fullscreen API
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+    toggleKiosk();
+  }, [toggleKiosk]);
 
   // Load dashboard config
   useEffect(() => {
@@ -50,10 +73,31 @@ export default function FlowDisponibilityView() {
     refresh,
   } = useFlowDisponibilityData(config, 30_000);
 
+  // Save current snapshot (updates updated_at)
+  const handleSave = useCallback(async () => {
+    if (!dashboardId) return;
+    setSaving(true);
+    const { error: err } = await supabase
+      .from("dashboards")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", dashboardId);
+    setSaving(false);
+    toast({
+      title: err ? "Erro ao salvar" : "Painel salvo",
+      description: err ? String(err.message) : "Atualizado com sucesso.",
+      variant: err ? "destructive" : "default",
+    });
+  }, [dashboardId, toast]);
+
+  // Reconfigure — navigate to wizard with edit param
+  const handleReconfigure = useCallback(() => {
+    navigate(`/app/flowdisp/new?edit=${dashboardId}`);
+  }, [dashboardId, navigate]);
+
   if (loadingConfig) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-neon-green animate-spin" />
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
       </div>
     );
   }
@@ -79,55 +123,88 @@ export default function FlowDisponibilityView() {
       {/* Animated gradient background */}
       <div className="fixed inset-0 pointer-events-none">
         <motion.div
-          className="absolute top-0 left-1/4 w-[600px] h-[400px] bg-neon-green/3 rounded-full blur-[150px]"
+          className="absolute top-0 left-1/4 w-[600px] h-[400px] bg-primary/3 rounded-full blur-[150px]"
           animate={{ x: [0, 50, 0], opacity: [0.3, 0.5, 0.3] }}
           transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
         />
         <motion.div
-          className="absolute bottom-0 right-1/4 w-[500px] h-[300px] bg-neon-cyan/2 rounded-full blur-[120px]"
+          className="absolute bottom-0 right-1/4 w-[500px] h-[300px] bg-accent/2 rounded-full blur-[120px]"
           animate={{ x: [0, -30, 0], opacity: [0.2, 0.4, 0.2] }}
           transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", delay: 2 }}
         />
       </div>
 
-      {/* Header */}
-      <div className="relative z-10 border-b border-border/30 bg-card/50 backdrop-blur-xl">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/app/monitoring/flowdisp")} className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2.5">
-              <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 8, repeat: Infinity, ease: "linear" }}>
-                <Activity className="w-6 h-6 text-neon-green" />
-              </motion.div>
-              <div>
-                <h1 className="text-sm font-display font-bold text-foreground">{panelName}</h1>
-                <p className="text-[9px] font-mono text-muted-foreground">
-                  {config.connectionName} → {config.groupName}
-                </p>
+      {/* Header — hidden in kiosk */}
+      <AnimatePresence>
+        {!isKiosk && (
+          <motion.div
+            initial={{ y: -48, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -48, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="relative z-10 border-b border-border/30 bg-card/50 backdrop-blur-xl"
+          >
+            <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
+              {/* Left: Back + Title */}
+              <div className="flex items-center gap-3 min-w-0">
+                <Button
+                  onClick={() => navigate("/app/monitoring/flowdisp")}
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 8, repeat: Infinity, ease: "linear" }}>
+                    <Activity className="w-5 h-5 text-primary shrink-0" />
+                  </motion.div>
+                  <div className="min-w-0">
+                    <h1 className="text-sm font-display font-bold text-foreground truncate">{panelName}</h1>
+                    <p className="text-[9px] font-mono text-muted-foreground truncate">
+                      {config.connectionName} → {config.groupName}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Action buttons */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {lastPoll && (
+                  <span className="text-[9px] font-mono text-muted-foreground hidden lg:inline mr-1">
+                    {lastPoll.toLocaleTimeString("pt-BR")}
+                  </span>
+                )}
+
+                <Button onClick={refresh} disabled={loading} variant="outline" size="sm" className="gap-1.5 h-7">
+                  <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+                  <span className="text-xs hidden sm:inline">Refresh</span>
+                </Button>
+
+                <Button onClick={handleSave} disabled={saving} variant="outline" size="sm" className="gap-1.5 h-7">
+                  <Save className={`w-3 h-3 ${saving ? "animate-pulse" : ""}`} />
+                  <span className="text-xs hidden sm:inline">Salvar</span>
+                </Button>
+
+                <Button onClick={handleReconfigure} variant="outline" size="sm" className="gap-1.5 h-7">
+                  <Settings className="w-3 h-3" />
+                  <span className="text-xs hidden sm:inline">Reconfigurar</span>
+                </Button>
+
+                <Button onClick={toggleFullscreen} variant="outline" size="sm" className="gap-1.5 h-7">
+                  <Maximize2 className="w-3 h-3" />
+                  <span className="text-xs hidden sm:inline">Kiosk</span>
+                </Button>
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {lastPoll && (
-              <span className="text-[9px] font-mono text-muted-foreground hidden sm:inline">
-                Última atualização: {lastPoll.toLocaleTimeString("pt-BR")}
-              </span>
-            )}
-            <Button onClick={refresh} disabled={loading} variant="outline" size="sm" className="gap-1.5 h-7">
-              <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
-              <span className="text-xs hidden sm:inline">Atualizar</span>
-            </Button>
-          </div>
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main content */}
       <div className="container mx-auto px-4 py-4 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
-          {/* Stats sidebar (left column) */}
+          {/* Stats sidebar */}
           <div>
             <FlowDispStatsSidebar
               total={total}
@@ -138,17 +215,17 @@ export default function FlowDisponibilityView() {
             />
           </div>
 
-          {/* Host cards grid (right column) */}
+          {/* Host cards grid */}
           <div className="min-h-[400px]">
             {error && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 mb-4">
-                <p className="text-xs text-red-400 font-mono">{error}</p>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-4">
+                <p className="text-xs text-destructive font-mono">{error}</p>
               </div>
             )}
 
             {loading && hosts.length === 0 ? (
               <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 text-neon-green animate-spin" />
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
@@ -167,6 +244,26 @@ export default function FlowDisponibilityView() {
           </div>
         </div>
       </div>
+
+      {/* Kiosk exit FAB */}
+      <AnimatePresence>
+        {isKiosk && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={toggleFullscreen}
+            className="fixed bottom-4 right-4 z-50 h-10 w-10 rounded-full
+              bg-card/80 backdrop-blur-lg border border-border/30
+              flex items-center justify-center
+              text-muted-foreground hover:text-foreground hover:border-primary/30
+              shadow-lg transition-colors"
+            title="Sair do Modo Kiosk"
+          >
+            <Minimize2 className="h-4 w-4" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
