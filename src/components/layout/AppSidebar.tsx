@@ -47,6 +47,7 @@ function useSidebarItems() {
     { title: t("sidebar.bgpFlow"), url: "/app/monitoring/bgp", icon: Globe },
     { title: t("sidebar.fleetIntelligence"), url: "/app/monitoring/fleet", icon: Fuel },
     { title: t("sidebar.printers"), url: "/app/monitoring/printers", icon: Printer },
+    { title: "FlowDisponibility", url: "/app/monitoring/flowdisp", icon: Zap },
   ];
 
   const engineeringItems = [
