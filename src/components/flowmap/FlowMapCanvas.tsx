@@ -368,7 +368,7 @@ export default function FlowMapCanvas({
       else if (isImpacted) color = "#8b0000";
       else color = "#00e676";
 
-      const weight = linkSt === "DOWN" ? 6 : linkSt === "DEGRADED" ? 5 : isImpacted ? 6 : link.is_ring ? 4 : 3;
+      const weight = linkSt === "DOWN" ? 8 : linkSt === "DEGRADED" ? 7 : isImpacted ? 8 : link.is_ring ? 6 : 5;
       const dashArray = linkSt === "DOWN" ? "10, 6" : linkSt === "DEGRADED" ? "6, 4" : isImpacted ? "8, 4" : undefined;
       const pulseClass = linkSt === "DOWN" ? "fm-link-pulse" : linkSt === "DEGRADED" ? "fm-link-pulse-slow" : "fm-traffic-glow";
       const opacity = hasIncident && !isAffected ? 0.25 : 0.9;
