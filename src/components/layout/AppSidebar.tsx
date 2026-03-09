@@ -97,6 +97,7 @@ const PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
   "/app/monitoring/bgp": () => import("@/pages/monitoring/BgpFlowList"),
   "/app/monitoring/fleet": () => import("@/pages/monitoring/FleetIntelligenceList"),
   "/app/monitoring/printers": () => import("@/pages/monitoring/PrinterList"),
+  "/app/monitoring/flowdisp": () => import("@/pages/monitoring/FlowDisponibilityList"),
   "/app/operations/home": () => import("@/pages/OperationsHome"),
   "/app/operations/flowmap": () => import("@/pages/FlowMapPage"),
   "/app/operations/incidents": () => import("@/pages/IncidentsPage"),

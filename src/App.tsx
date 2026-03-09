@@ -134,6 +134,10 @@ const App = () => (
                           <Route path="monitoring/printers/new" element={<PrinterIntelligence />} />
                           <Route path="monitoring/printers/:dashboardId" element={<PrinterIntelligence />} />
                           <Route path="monitoring/printers/billing" element={<BillingHistory />} />
+                          <Route path="monitoring/flowdisp" element={<FlowDisponibilityList />} />
+                          <Route path="monitoring/flowdisp/new" element={<FlowDisponibility />} />
+                          <Route path="monitoring/flowdisp/:dashboardId/edit" element={<FlowDisponibility />} />
+                          <Route path="monitoring/flowdisp/:dashboardId" element={<FlowDisponibilityView />} />
 
                           {/* Finance */}
                           <Route path="finance" element={<FlowFinance />} />
