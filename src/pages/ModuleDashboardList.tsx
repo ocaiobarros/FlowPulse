@@ -231,7 +231,7 @@ export default function ModuleDashboardList({ category, title, description, icon
             </RoleGate>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 3xl:grid-cols-4 4k:grid-cols-5 gap-4 3xl:gap-6">
             {dashboards.map((dash, i) => {
               const viewUrl = viewBasePath ? `${viewBasePath}/${dash.id}` : `/dashboard/${dash.id}`;
               const kioskUrl = `${viewUrl}?kiosk=true`;
