@@ -163,7 +163,7 @@ export default function ModuleDashboardList({ category, title, description, icon
       {/* Hidden file input for import */}
       <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
 
-      <div className="max-w-[1200px] mx-auto relative z-10">
+      <div className="max-w-[1200px] 3xl:max-w-[2200px] 4k:max-w-none mx-auto relative z-10">
         <motion.header
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
