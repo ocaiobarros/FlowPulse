@@ -8,7 +8,7 @@ import type { LinkTraffic, EffectiveHostStatus } from "@/hooks/useFlowMapStatus"
 /* ── Icon factories ── */
 function hostIcon(status: "UP" | "DOWN" | "UNKNOWN", isCritical: boolean, isIsolated: boolean, depth?: number): L.DivIcon {
   const color = isIsolated ? "#9e9e9e" : status === "UP" ? "#00e676" : status === "DOWN" ? "#ff1744" : "#9e9e9e";
-  const size = isCritical && status === "DOWN" ? 20 : 14;
+  const size = isCritical && status === "DOWN" ? 28 : 20;
   const pulse = status === "DOWN" ? `animation: fmPulse ${isCritical ? "0.8s" : "1.4s"} ease-in-out infinite;` : "";
   // 🅰️ Depth heatmap: deeper isolated nodes are more transparent (0.25 to 0.55)
   const isolatedOpacity = isIsolated ? Math.max(0.25, 0.55 - (depth ?? 0) * 0.05) : 1;
@@ -19,7 +19,7 @@ function hostIcon(status: "UP" | "DOWN" | "UNKNOWN", isCritical: boolean, isIsol
     iconSize: [size * 2, size * 2],
     iconAnchor: [size, size],
     html: `<div style="width:${size * 2}px;height:${size * 2}px;display:flex;align-items:center;justify-content:center;">
-      <div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 ${size}px ${color}80;${pulse}${opacity}cursor:pointer;"></div>
+      <div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 ${size + 4}px ${color}80;${pulse}${opacity}cursor:pointer;"></div>
     </div>`,
   });
 }
