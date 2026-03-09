@@ -800,8 +800,7 @@ async function exportPrinterCountersPdf(printers: PrinterData[]) {
 
 export default function PrinterIntelligence() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const isKiosk = searchParams.get("kiosk") === "true";
+  const isKiosk = useKioskMode();
   const { save: saveDashboard, saving, dashboardId, loadedConfig, loading: dbLoading } = useDashboardPersist<PrinterConfig>({
     category: "printer",
     listPath: "/app/monitoring/printers",
