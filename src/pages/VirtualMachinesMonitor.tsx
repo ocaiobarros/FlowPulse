@@ -604,14 +604,14 @@ export default function VirtualMachinesMonitor() {
     return 0;
   }, [virt?.cpu?.frequency]);
 
+  const isKiosk = useKioskMode();
+
   if (showSetup) {
     return <IdracSetupWizard onComplete={handleConfigComplete} existingConfig={config} title="Máquinas Virtuais" subtitle="Monitoramento individual de VMs" icon={MonitorCheck} multiSelect />;
   }
 
   const isVMware = virt?.type === "vmware";
   const accentColor = isVMware ? "#00e5ff" : "#448aff";
-
-  const isKiosk = useKioskMode();
 
   return (
     <div className={`min-h-screen bg-background grid-pattern scanlines relative ${isKiosk ? "" : "p-4 md:p-6 lg:p-8"}`}>
