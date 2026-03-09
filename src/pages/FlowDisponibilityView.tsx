@@ -22,23 +22,21 @@ export default function FlowDisponibilityView() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Kiosk mode
-  const kioskFromUrl = searchParams.get("kiosk") === "true";
-  const [isKiosk, setIsKiosk] = useState(kioskFromUrl);
-  useEffect(() => {
-    if (kioskFromUrl) setIsKiosk(true);
-  }, [kioskFromUrl]);
-  const toggleKiosk = useCallback(() => setIsKiosk((k) => !k), []);
+  // Kiosk mode — synced with URL param so AppLayout hides sidebar+header
+  const isKiosk = searchParams.get("kiosk") === "true";
 
-  // Fullscreen API
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
+  const toggleKiosk = useCallback(() => {
+    const next = !isKiosk;
+    const sp = new URLSearchParams(searchParams);
+    if (next) {
+      sp.set("kiosk", "true");
       document.documentElement.requestFullscreen?.();
     } else {
+      sp.delete("kiosk");
       document.exitFullscreen?.();
     }
-    toggleKiosk();
-  }, [toggleKiosk]);
+    navigate(`?${sp.toString()}`, { replace: true });
+  }, [isKiosk, searchParams, navigate]);
 
   // Load dashboard config
   useEffect(() => {
