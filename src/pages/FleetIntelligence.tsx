@@ -185,6 +185,8 @@ export default function FleetIntelligence() {
     }));
   }, [summary]);
 
+  const isKiosk = useKioskMode();
+
   // ── Setup Wizard ──
   if (showSetup) {
     return (
@@ -268,7 +270,7 @@ export default function FleetIntelligence() {
         </div>
       </div>
     );
-  const isKiosk = useKioskMode();
+  }
 
   return (
     <div
