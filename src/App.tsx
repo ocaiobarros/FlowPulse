@@ -57,6 +57,9 @@ const FleetIntelligenceList = lazyRetry(() => import("./pages/monitoring/FleetIn
 const DashboardsList = lazyRetry(() => import("./pages/monitoring/DashboardsList"));
 const PrinterList = lazyRetry(() => import("./pages/monitoring/PrinterList"));
 const PrinterIntelligence = lazyRetry(() => import("./pages/PrinterIntelligence"));
+const FlowDisponibilityList = lazyRetry(() => import("./pages/monitoring/FlowDisponibilityList"));
+const FlowDisponibility = lazyRetry(() => import("./pages/FlowDisponibility"));
+const FlowDisponibilityView = lazyRetry(() => import("./pages/FlowDisponibilityView"));
 const BillingHistory = lazyRetry(() => import("./pages/BillingHistory"));
 const FlowFinance = lazyRetry(() => import("./pages/FlowFinance"));
 const UserSettings = lazyRetry(() => import("./pages/UserSettings"));
