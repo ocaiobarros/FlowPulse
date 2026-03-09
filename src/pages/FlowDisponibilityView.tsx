@@ -19,22 +19,7 @@ export default function FlowDisponibilityView() {
   const [panelName, setPanelName] = useState<string | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  // Kiosk mode — synced with URL param so AppLayout hides sidebar+header
-  const isKiosk = searchParams.get("kiosk") === "true";
-
-  const toggleKiosk = useCallback(() => {
-    const next = !isKiosk;
-    const sp = new URLSearchParams(searchParams);
-    if (next) {
-      sp.set("kiosk", "true");
-      document.documentElement.requestFullscreen?.();
-    } else {
-      sp.delete("kiosk");
-      document.exitFullscreen?.();
-    }
-    navigate(`?${sp.toString()}`, { replace: true });
-  }, [isKiosk, searchParams, navigate]);
+  const isKiosk = useKioskMode();
 
   // Load dashboard config
   useEffect(() => {
