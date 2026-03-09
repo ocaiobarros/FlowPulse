@@ -2,10 +2,11 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Loader2, Settings2, Server, Cpu, MemoryStick, HardDrive, Network,
+  Loader2, Server, Cpu, MemoryStick, HardDrive, Network,
   Activity, Box, ArrowDownToLine, ArrowUpFromLine, Clock, Search,
-  Filter, MonitorCheck, Power, Gauge, ArrowLeft, Save,
+  Filter, MonitorCheck, Power, Gauge,
 } from "lucide-react";
+import MonitoringHeader, { useKioskMode } from "@/components/layout/MonitoringHeader";
 import { useDashboardPersist } from "@/hooks/useDashboardPersist";
 import { useIdracLive, detectHostType, detectPrefix } from "@/hooks/useIdracLive";
 import type { ZabbixItem, IdracData } from "@/hooks/useIdracLive";
