@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef } from "react";
+import { memo, useMemo, useRef, useState, useEffect } from "react";
 import { useWidgetData } from "@/hooks/useWidgetData";
 import type { TelemetryCacheEntry } from "@/hooks/useDashboardRealtime";
 import type { TelemetryTimeseriesData, TelemetryStatData } from "@/types/telemetry";
