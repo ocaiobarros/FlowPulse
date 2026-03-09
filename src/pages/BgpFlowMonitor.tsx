@@ -7,8 +7,9 @@ import {
   Settings2, Network, Globe, ArrowDownToLine, ArrowUpFromLine,
   BarChart3, Filter, Activity, Eye, EyeOff, Lock, User,
   RefreshCw, Wifi, WifiOff, TrendingUp, TrendingDown, Minus,
-  Zap, ArrowRight, Layers, ArrowLeft, Save,
+  Zap, ArrowRight, Layers,
 } from "lucide-react";
+import MonitoringHeader, { useKioskMode } from "@/components/layout/MonitoringHeader";
 import { Icon } from "@iconify/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useDashboardPersist } from "@/hooks/useDashboardPersist";
