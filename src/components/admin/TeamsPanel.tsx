@@ -38,6 +38,23 @@ interface Props {
   profiles: Profile[];
 }
 
+async function invokeTeamAction(action: string, payload: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke("tenant-admin", {
+    body: { action, ...payload },
+  });
+  if (error) {
+    // Try to extract message from FunctionsHttpError
+    let msg = error.message || "Edge Function error";
+    const ctx = (error as any)?.context;
+    if (ctx?.clone) {
+      try { const j = await ctx.clone().json(); if (j?.error) msg = j.error; } catch { /* */ }
+    }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
 export default function TeamsPanel({ tenantId, profiles }: Props) {
   const { toast } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -59,23 +76,9 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
     if (!tenantId) return;
     setLoading(true);
     try {
-      // Try edge function first (bypasses RLS for cross-tenant Super Admin access)
-      const { data: efData, error: efErr } = await supabase.functions.invoke("tenant-admin", {
-        body: { action: "tenant_teams", tenant_id: tenantId },
-      });
-
-      if (!efErr && !efData?.error && efData?.teams) {
-        setTeams((efData.teams as Team[]) ?? []);
-        setMembers((efData.members as TeamMember[]) ?? []);
-      } else {
-        // Fallback to direct query (works when JWT tenant matches)
-        const [teamsRes, membersRes] = await Promise.all([
-          supabase.from("teams").select("*").eq("tenant_id", tenantId).order("name"),
-          supabase.from("team_members").select("*").eq("tenant_id", tenantId),
-        ]);
-        setTeams((teamsRes.data as Team[]) ?? []);
-        setMembers((membersRes.data as TeamMember[]) ?? []);
-      }
+      const result = await invokeTeamAction("tenant_teams", { tenant_id: tenantId });
+      setTeams((result.teams as Team[]) ?? []);
+      setMembers((result.members as TeamMember[]) ?? []);
     } catch {
       // Fallback to direct query
       const [teamsRes, membersRes] = await Promise.all([
@@ -98,7 +101,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
 
   const openEdit = (t: Team) => {
     setEditingTeam(t);
-    setForm({ name: t.name, description: t.description, color: t.color });
+    setForm({ name: t.name, description: t.description ?? "", color: t.color ?? "#10b981" });
     setDialogOpen(true);
   };
 
@@ -107,21 +110,20 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
     setSaving(true);
     try {
       if (editingTeam) {
-        const { error } = await supabase.from("teams").update({
+        await invokeTeamAction("update_team", {
+          team_id: editingTeam.id,
           name: form.name.trim(),
           description: form.description.trim(),
           color: form.color,
-        }).eq("id", editingTeam.id);
-        if (error) throw error;
+        });
         toast({ title: "Time atualizado" });
       } else {
-        const { error } = await supabase.from("teams").insert({
+        await invokeTeamAction("create_team", {
           tenant_id: tenantId,
           name: form.name.trim(),
           description: form.description.trim(),
           color: form.color,
         });
-        if (error) throw error;
         toast({ title: "Time criado", description: `"${form.name.trim()}" foi criado.` });
       }
       setDialogOpen(false);
@@ -135,8 +137,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
 
   const handleDelete = async (teamId: string) => {
     try {
-      const { error } = await supabase.from("teams").delete().eq("id", teamId);
-      if (error) throw error;
+      await invokeTeamAction("delete_team", { team_id: teamId });
       toast({ title: "Time excluído" });
       await fetchTeams();
     } catch (err: any) {
@@ -155,12 +156,11 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
   const addMember = async (userId: string) => {
     if (!selectedTeam || !tenantId) return;
     try {
-      const { error } = await supabase.from("team_members").insert({
+      await invokeTeamAction("add_team_member", {
         tenant_id: tenantId,
         team_id: selectedTeam.id,
         user_id: userId,
       });
-      if (error) throw error;
       toast({ title: "Membro adicionado" });
       await fetchTeams();
     } catch (err: any) {
@@ -170,8 +170,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
 
   const removeMember = async (memberId: string) => {
     try {
-      const { error } = await supabase.from("team_members").delete().eq("id", memberId);
-      if (error) throw error;
+      await invokeTeamAction("remove_team_member", { member_id: memberId });
       toast({ title: "Membro removido" });
       await fetchTeams();
     } catch (err: any) {
