@@ -30,6 +30,11 @@ export interface TenantInfo {
   id: string;
   name: string;
   slug: string;
+  plan?: string;
+  max_users?: number;
+  max_teams?: number;
+  max_dashboards?: number;
+  max_integrations?: number;
   created_at: string;
 }
 
