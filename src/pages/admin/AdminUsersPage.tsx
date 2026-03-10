@@ -30,6 +30,7 @@ export default function AdminUsersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { profiles, roles, tenants, selectedTenantId, setSelectedTenantId, isSuperAdmin, fetchData, profileById, getRoleForUser, getRoleBadgeVariant } = useAdmin();
+  const { refreshSession } = useTenantFilter();
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
