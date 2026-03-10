@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Users, Building2, Cable, Radio, Activity, Zap, Rocket, UsersRound, CreditCard } from "lucide-react";
+import { Users, Building2, Cable, Radio, Activity, Zap, CreditCard, FileSearch } from "lucide-react";
 
 interface AdminCard {
   title: string;
@@ -58,6 +58,13 @@ const cards: AdminCard[] = [
     icon: CreditCard,
     path: "/app/settings/admin/billing",
     color: "border-l-pink-500",
+  },
+  {
+    title: "Audit Explorer",
+    description: "Investigue ações, rastreie mudanças e analise operações na plataforma.",
+    icon: FileSearch,
+    path: "/app/settings/admin/audit",
+    color: "border-l-violet-500",
   },
 ];
 
