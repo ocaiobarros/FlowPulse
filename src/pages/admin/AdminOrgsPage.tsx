@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
-import { useAdmin, getFunctionErrorMessage, type Profile } from "./AdminContext";
+import { useAdmin, type Profile } from "./AdminContext";
 import { useTenantFilter } from "@/hooks/useTenantFilter";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  createTenant,
+  updateTenant,
+  deleteTenant,
+} from "@/services/admin/tenantService";
+import { inviteUser } from "@/services/admin/userService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,13 +19,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Building2, Loader2, Trash2, Plus, Pencil, Save, EyeOff,
+  Building2, Loader2, Trash2, Plus, Pencil, Save,
 } from "lucide-react";
 import AdminBreadcrumb from "./AdminBreadcrumb";
 
 export default function AdminOrgsPage() {
   const { toast } = useToast();
-  const { profiles, roles, tenants, selectedTenantId, setSelectedTenantId, isSuperAdmin, fetchData, profileById, getRoleForUser, getRoleBadgeVariant } = useAdmin();
+  const { roles, tenants, selectedTenantId, setSelectedTenantId, isSuperAdmin, fetchData, profileById, getRoleForUser, getRoleBadgeVariant } = useAdmin();
   const { refreshSession } = useTenantFilter();
 
   const [editingTeam, setEditingTeam] = useState(false);
@@ -32,7 +37,6 @@ export default function AdminOrgsPage() {
   const [creatingOrg, setCreatingOrg] = useState(false);
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null);
 
-  // Invite user into this org
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", display_name: "", role: "viewer", password: "" });
   const [inviting, setInviting] = useState(false);
@@ -57,13 +61,7 @@ export default function AdminOrgsPage() {
     if (!tenant || !teamName.trim()) return;
     setSavingTeam(true);
     try {
-      const slug = teamSlug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
-      if (!slug) { toast({ variant: "destructive", title: "Slug inválido" }); setSavingTeam(false); return; }
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: { action: "update_tenant", tenant_id: tenant.id, name: teamName.trim(), slug },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      await updateTenant({ tenant_id: tenant.id, name: teamName.trim(), slug: teamSlug });
       toast({ title: "Organização atualizada" });
       setEditingTeam(false);
       await fetchData();
@@ -76,19 +74,14 @@ export default function AdminOrgsPage() {
     if (!newOrgForm.name.trim()) return;
     setCreatingOrg(true);
     try {
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: { action: "create", name: newOrgForm.name.trim(), slug: newOrgForm.slug.trim() || newOrgForm.name.trim() },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const data = await createTenant({ name: newOrgForm.name, slug: newOrgForm.slug });
       toast({ title: "Organização criada", description: `"${data?.tenant?.name}" criada.` });
       setSelectedTenantId(data?.tenant?.id);
       setCreateOrgOpen(false);
       setNewOrgForm({ name: "", slug: "" });
       await fetchData();
     } catch (err: any) {
-      const desc = await getFunctionErrorMessage(err, "Falha ao criar organização.");
-      toast({ variant: "destructive", title: "Erro", description: desc });
+      toast({ variant: "destructive", title: "Erro", description: err.message });
     } finally { setCreatingOrg(false); }
   };
 
@@ -97,9 +90,7 @@ export default function AdminOrgsPage() {
     try {
       const membersCount = new Set(roles.filter((r) => r.tenant_id === tenantId).map((r) => r.user_id)).size;
       if (membersCount > 0) { toast({ variant: "destructive", title: "Erro", description: "Não é possível excluir com membros." }); return; }
-      const { data, error } = await supabase.functions.invoke("tenant-admin", { body: { action: "delete", tenant_id: tenantId } });
-      if (error) { const m = await getFunctionErrorMessage(error, "Falha ao excluir."); throw new Error(m); }
-      if (data?.error) throw new Error(data.error);
+      await deleteTenant(tenantId);
       toast({ title: "Organização excluída" });
       if (selectedTenantId === tenantId) setSelectedTenantId(tenants.find((t) => t.id !== tenantId)?.id ?? null);
       await fetchData();
@@ -112,21 +103,20 @@ export default function AdminOrgsPage() {
     if (!inviteForm.email.trim() || !selectedTenantId) return;
     setInviting(true);
     try {
-      let email = inviteForm.email.trim().toLowerCase();
-      if (!email.includes("@")) email = `${email}@flowpulse.local`;
-      const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: { email, display_name: inviteForm.display_name.trim(), role: inviteForm.role, password: inviteForm.password.trim() || undefined, target_tenant_id: selectedTenantId, mode: "link" },
+      const data = await inviteUser({
+        email: inviteForm.email,
+        display_name: inviteForm.display_name,
+        role: inviteForm.role,
+        password: inviteForm.password,
+        target_tenant_id: selectedTenantId,
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
       toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado" });
       setInviteOpen(false);
       setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
       await refreshSession();
       await fetchData();
     } catch (err: any) {
-      const desc = await getFunctionErrorMessage(err, "Falha ao convidar.");
-      toast({ variant: "destructive", title: "Erro", description: desc });
+      toast({ variant: "destructive", title: "Erro", description: err.message });
     } finally { setInviting(false); }
   };
 
@@ -146,7 +136,6 @@ export default function AdminOrgsPage() {
         )}
       </div>
 
-      {/* Tenant Selector */}
       {tenants.length > 1 && (
         <section className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4">
           <div className="flex flex-wrap gap-2">
@@ -170,7 +159,6 @@ export default function AdminOrgsPage() {
         </section>
       )}
 
-      {/* Org Detail */}
       <section className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -220,7 +208,6 @@ export default function AdminOrgsPage() {
           </div>
         )}
 
-        {/* Role breakdown */}
         {tenant && !editingTeam && (
           <div className="mt-8">
             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Membros por Role</h4>
@@ -252,7 +239,7 @@ export default function AdminOrgsPage() {
         )}
       </section>
 
-      {/* ── Invite Dialog ── */}
+      {/* Invite Dialog */}
       <Dialog open={inviteOpen} onOpenChange={(o) => !inviting && setInviteOpen(o)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -293,7 +280,7 @@ export default function AdminOrgsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Create Org Dialog ── */}
+      {/* Create Org Dialog */}
       <Dialog open={createOrgOpen} onOpenChange={(o) => !creatingOrg && setCreateOrgOpen(o)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
