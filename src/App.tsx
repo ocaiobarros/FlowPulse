@@ -169,6 +169,7 @@ const App = () => (
                             <Route path="telemetry" element={<AdminTelemetryPage />} />
                             <Route path="ops" element={<AdminOpsPage />} />
                             <Route path="diagnostics" element={<AdminDiagPage />} />
+                            <Route path="billing" element={<AdminBillingPage />} />
                           </Route>
                           <Route path="settings/profile" element={<UserSettings />} />
                           <Route path="settings/telegram" element={
