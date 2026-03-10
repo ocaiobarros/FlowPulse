@@ -592,6 +592,44 @@ Deno.serve(async (req) => {
       });
     }
 
+    /* ── UPDATE_PLAN ── */
+    if (action === "update_plan") {
+      const tenantId = String(body?.tenant_id || "").trim();
+      const plan = String(body?.plan || "").trim();
+      if (!tenantId || !plan) {
+        return new Response(JSON.stringify({ error: "tenant_id and plan are required", stage }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const planLimits: Record<string, { max_users: number; max_teams: number; max_dashboards: number; max_integrations: number }> = {
+        starter: { max_users: 10, max_teams: 5, max_dashboards: 20, max_integrations: 3 },
+        growth: { max_users: 50, max_teams: 20, max_dashboards: 100, max_integrations: 10 },
+        enterprise: { max_users: 500, max_teams: 100, max_dashboards: 1000, max_integrations: 50 },
+      };
+      const limits = planLimits[plan];
+      if (!limits) {
+        return new Response(JSON.stringify({ error: "Invalid plan. Allowed: starter, growth, enterprise", stage }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      stage = "update_plan";
+      const { error: upErr } = await adminClient.from("tenants").update({ plan, ...limits }).eq("id", tenantId);
+      if (upErr) {
+        return new Response(JSON.stringify({ error: upErr.message, stage }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Upsert billing record
+      await adminClient.from("tenant_billing").upsert(
+        { tenant_id: tenantId, plan, status: "active" },
+        { onConflict: "tenant_id" }
+      );
+      await writeAudit(tenantId, "update_plan", "tenant", tenantId, { plan, ...limits });
+      return new Response(JSON.stringify({ success: true, plan, limits }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     /* ── UPDATE_TENANT ── */
     if (action === "update_tenant") {
       const tenantId = String(body?.tenant_id || "").trim();
