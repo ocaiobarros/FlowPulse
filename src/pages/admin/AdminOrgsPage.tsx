@@ -122,6 +122,7 @@ export default function AdminOrgsPage() {
       toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado" });
       setInviteOpen(false);
       setInviteForm({ email: "", display_name: "", role: "viewer", password: "" });
+      await refreshSession();
       await fetchData();
     } catch (err: any) {
       const desc = await getFunctionErrorMessage(err, "Falha ao convidar.");
