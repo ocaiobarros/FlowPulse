@@ -380,6 +380,52 @@ Deno.serve(async (req) => {
       });
     }
 
+    /* ── TENANT_TEAMS (list teams + members for a tenant — bypasses RLS) ── */
+    if (action === "tenant_teams") {
+      const tenantId = String(body?.tenant_id || "").trim();
+      if (!tenantId) {
+        return new Response(JSON.stringify({ error: "tenant_id is required", stage }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!isSuperAdmin) {
+        const { data: isTenantAdmin } = await adminClient.rpc("has_role", {
+          p_user_id: caller.id,
+          p_tenant_id: tenantId,
+          p_role: "admin",
+        });
+        if (!isTenantAdmin) {
+          return new Response(JSON.stringify({ error: "Admin role required for this tenant", stage }), {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      stage = "fetch_tenant_teams";
+      const [teamsRes, membersRes] = await Promise.all([
+        adminClient.from("teams").select("*").eq("tenant_id", tenantId).order("name"),
+        adminClient.from("team_members").select("*").eq("tenant_id", tenantId),
+      ]);
+
+      if (teamsRes.error) {
+        return new Response(JSON.stringify({ error: teamsRes.error.message, stage }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        teams: teamsRes.data ?? [],
+        members: membersRes.data ?? [],
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     /* ── DELETE ── */
     if (action === "delete") {
       const tenantId = String(body?.tenant_id || "").trim();
