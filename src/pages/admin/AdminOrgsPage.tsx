@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAdmin, getFunctionErrorMessage, type Profile } from "./AdminContext";
+import { useTenantFilter } from "@/hooks/useTenantFilter";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
