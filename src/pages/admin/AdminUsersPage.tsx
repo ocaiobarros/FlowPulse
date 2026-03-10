@@ -1,10 +1,15 @@
 import { useEffect, useState, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAuth } from "@/hooks/useAuth";
-import { useAdmin, getFunctionErrorMessage, type Profile, type UserRole } from "./AdminContext";
+import { useAdmin, type Profile, type UserRole } from "./AdminContext";
 import { useTenantFilter } from "@/hooks/useTenantFilter";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  inviteUser,
+  setUserRole,
+  unlinkUser,
+  deleteUser as deleteUserService,
+} from "@/services/admin/userService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +52,7 @@ export default function AdminUsersPage() {
   const [removeDialog, setRemoveDialog] = useState<{ open: boolean; userId: string; name: string; tenantId: string }>({ open: false, userId: "", name: "", tenantId: "" });
   const [removing, setRemoving] = useState(false);
 
-  // Unlink from org (All users tab — pick which org)
+  // Unlink from org
   const [unlinkDialog, setUnlinkDialog] = useState<{ open: boolean; userId: string; name: string; userTenantIds: string[] }>({ open: false, userId: "", name: "", userTenantIds: [] });
   const [unlinkTargetTenant, setUnlinkTargetTenant] = useState("");
 
@@ -63,32 +68,16 @@ export default function AdminUsersPage() {
 
   // Edit permissions
   const [permissionDialog, setPermissionDialog] = useState<{
-    open: boolean;
-    userId: string;
-    name: string;
-    email: string;
-    tenantId: string;
-    role: string;
+    open: boolean; userId: string; name: string; email: string; tenantId: string; role: string;
   }>({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" });
   const [savingPermission, setSavingPermission] = useState(false);
 
-  /* ── Computed: All Users (profiles as source of truth) ── */
+  /* ── Computed: All Users ── */
   const roleUserIds = new Set(roles.map((r) => r.user_id));
   const allUserProfiles: (Profile & { _roles: UserRole[] })[] = [
-    // Start from all profiles
-    ...profiles.map((p) => ({
-      ...p,
-      _roles: roles.filter((r) => r.user_id === p.id),
-    })),
-    // Add any users that have roles but no profile visible (edge case)
+    ...profiles.map((p) => ({ ...p, _roles: roles.filter((r) => r.user_id === p.id) })),
     ...([...roleUserIds].filter((uid) => !profiles.some((p) => p.id === uid)).map((uid) => ({
-      id: uid,
-      display_name: null,
-      email: null,
-      avatar_url: null,
-      tenant_id: "",
-      created_at: new Date().toISOString(),
-      _roles: roles.filter((r) => r.user_id === uid),
+      id: uid, display_name: null, email: null, avatar_url: null, tenant_id: "", created_at: new Date().toISOString(), _roles: roles.filter((r) => r.user_id === uid),
     }))),
   ];
 
@@ -99,12 +88,8 @@ export default function AdminUsersPage() {
   const orgUsers = orgUserIds.map((uid) => {
     const p = profileById.get(uid);
     return {
-      id: uid,
-      display_name: p?.display_name ?? null,
-      email: p?.email ?? null,
-      avatar_url: p?.avatar_url ?? null,
-      tenant_id: orgTenantId ?? "",
-      created_at: p?.created_at ?? new Date().toISOString(),
+      id: uid, display_name: p?.display_name ?? null, email: p?.email ?? null, avatar_url: p?.avatar_url ?? null,
+      tenant_id: orgTenantId ?? "", created_at: p?.created_at ?? new Date().toISOString(),
       _roles: roles.filter((r) => r.user_id === uid),
     };
   });
@@ -112,17 +97,12 @@ export default function AdminUsersPage() {
   const tenant = tenants.find((t) => t.id === selectedTenantId);
 
   /* ── Filter logic ── */
-  const applyFilter = (
-    list: typeof allUserProfiles,
-    options: { tenantScope: string | null; includeOrgFilter: boolean },
-  ) => {
+  const applyFilter = (list: typeof allUserProfiles, options: { tenantScope: string | null; includeOrgFilter: boolean }) => {
     const term = search.trim().toLowerCase();
-    const { tenantScope, includeOrgFilter } = options;
-
     return list.filter((p) => {
       const matchSearch = !term || (p.display_name?.toLowerCase().includes(term) ?? false) || (p.email?.toLowerCase().includes(term) ?? false);
-      const matchRole = roleFilter === "all" || p._roles.some((r) => r.role === roleFilter && (!tenantScope || r.tenant_id === tenantScope));
-      const matchOrg = !includeOrgFilter || orgFilter === "all" || p._roles.some((r) => r.tenant_id === orgFilter);
+      const matchRole = roleFilter === "all" || p._roles.some((r) => r.role === roleFilter && (!options.tenantScope || r.tenant_id === options.tenantScope));
+      const matchOrg = !options.includeOrgFilter || orgFilter === "all" || p._roles.some((r) => r.tenant_id === orgFilter);
       return matchSearch && matchRole && matchOrg;
     });
   };
@@ -131,32 +111,15 @@ export default function AdminUsersPage() {
   const filteredOrg = applyFilter(orgUsers, { tenantScope: orgTenantId, includeOrgFilter: false });
 
   useEffect(() => {
-    if (activeTab === "org" && orgFilter !== "all") {
-      setOrgFilter("all");
-    }
+    if (activeTab === "org" && orgFilter !== "all") setOrgFilter("all");
   }, [activeTab, orgFilter]);
 
-  /* ── Handlers ── */
-  const handleRoleChange = async (userId: string, newRole: string, tenantId: string, _emailHint?: string | null, _nameHint?: string | null) => {
+  /* ── Handlers (using service layer) ── */
+  const handleRoleChange = async (userId: string, newRole: string, tenantId: string) => {
     const changeKey = `${userId}:${tenantId}`;
     setChangingRole(changeKey);
-
     try {
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: {
-          action: "set_user_role",
-          user_id: userId,
-          tenant_id: tenantId,
-          role: newRole,
-        },
-      });
-
-      if (error) {
-        const m = await getFunctionErrorMessage(error, "Falha ao atualizar role.");
-        throw new Error(m);
-      }
-      if (data?.error) throw new Error(data.error);
-
+      await setUserRole({ user_id: userId, tenant_id: tenantId, role: newRole });
       toast({ title: "Permissão atualizada", description: `Usuário agora é ${newRole}.` });
       await refreshSession();
       await fetchData();
@@ -170,40 +133,16 @@ export default function AdminUsersPage() {
   };
 
   const openPermissionDialog = (p: typeof allUserProfiles[0], scopeTenantId: string | null) => {
-    const fallbackTenantId =
-      scopeTenantId
-      ?? (orgFilter !== "all" ? orgFilter : null)
-      ?? selectedTenantId
-      ?? p._roles[0]?.tenant_id
-      ?? tenants[0]?.id
-      ?? "";
-
+    const fallbackTenantId = scopeTenantId ?? (orgFilter !== "all" ? orgFilter : null) ?? selectedTenantId ?? p._roles[0]?.tenant_id ?? tenants[0]?.id ?? "";
     const scopedRole = fallbackTenantId ? getRoleForUser(p.id, fallbackTenantId) ?? "viewer" : "viewer";
-
-    setPermissionDialog({
-      open: true,
-      userId: p.id,
-      name: p.display_name ?? p.email ?? "usuário",
-      email: p.email ?? "",
-      tenantId: fallbackTenantId,
-      role: scopedRole,
-    });
+    setPermissionDialog({ open: true, userId: p.id, name: p.display_name ?? p.email ?? "usuário", email: p.email ?? "", tenantId: fallbackTenantId, role: scopedRole });
   };
 
   const handlePermissionSave = async () => {
     if (!permissionDialog.userId || !permissionDialog.tenantId) return;
-
     setSavingPermission(true);
-    const ok = await handleRoleChange(
-      permissionDialog.userId,
-      permissionDialog.role,
-      permissionDialog.tenantId,
-      permissionDialog.email,
-      permissionDialog.name,
-    );
-    if (ok) {
-      setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" });
-    }
+    const ok = await handleRoleChange(permissionDialog.userId, permissionDialog.role, permissionDialog.tenantId);
+    if (ok) setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" });
     setSavingPermission(false);
   };
 
@@ -212,26 +151,23 @@ export default function AdminUsersPage() {
     if (!inviteForm.email.trim() || !targetTenant) return;
     setInviting(true);
     try {
-      let email = inviteForm.email.trim().toLowerCase();
-      if (!email.includes("@")) email = `${email}@flowpulse.local`;
-      const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: { email, display_name: inviteForm.display_name.trim(), role: inviteForm.role, password: inviteForm.password.trim() || undefined, target_tenant_id: targetTenant, mode: "link" },
+      const data = await inviteUser({
+        email: inviteForm.email,
+        display_name: inviteForm.display_name,
+        role: inviteForm.role,
+        password: inviteForm.password,
+        target_tenant_id: targetTenant,
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
       const tName = tenants.find(t => t.id === targetTenant)?.name ?? "";
-      toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado", description: `${email} vinculado a "${tName}".` });
+      toast({ title: data?.existing ? "Usuário vinculado" : "Usuário adicionado", description: `${inviteForm.email.trim()} vinculado a "${tName}".` });
       setInviteOpen(false);
       setInviteForm({ email: "", display_name: "", role: "viewer", password: "", target_tenant_id: "" });
       setSelectedTenantId(targetTenant);
-      setSearch("");
-      setRoleFilter("all");
-      setOrgFilter("all");
+      setSearch(""); setRoleFilter("all"); setOrgFilter("all");
       await refreshSession();
       await fetchData();
     } catch (err: any) {
-      const desc = await getFunctionErrorMessage(err, "Falha ao convidar.");
-      toast({ variant: "destructive", title: "Erro", description: desc });
+      toast({ variant: "destructive", title: "Erro", description: err.message });
     } finally {
       setInviting(false);
     }
@@ -241,14 +177,7 @@ export default function AdminUsersPage() {
     if (!removeDialog.tenantId) return;
     setRemoving(true);
     try {
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: { action: "unlink", user_id: removeDialog.userId, tenant_id: removeDialog.tenantId },
-      });
-      if (error) {
-        const msg = await getFunctionErrorMessage(error, "Falha ao remover acesso.");
-        throw new Error(msg);
-      }
-      if (data?.error) throw new Error(data.error);
+      await unlinkUser({ user_id: removeDialog.userId, tenant_id: removeDialog.tenantId });
       toast({ title: "Acesso removido", description: `${removeDialog.name} removido da organização.` });
       setRemoveDialog({ open: false, userId: "", name: "", tenantId: "" });
       await refreshSession();
@@ -267,11 +196,13 @@ export default function AdminUsersPage() {
       const email = linkDialog.email?.trim().toLowerCase();
       if (!email) throw new Error("Usuário sem e-mail válido.");
       const profileToLink = profiles.find((p) => p.id === linkDialog.userId);
-      const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: { email, display_name: profileToLink?.display_name ?? "", role: linkRole, target_tenant_id: linkTargetTenant, mode: "link" },
+      await inviteUser({
+        email,
+        display_name: profileToLink?.display_name ?? "",
+        role: linkRole,
+        target_tenant_id: linkTargetTenant,
+        mode: "link",
       });
-      if (error) { const m = await getFunctionErrorMessage(error, "Falha ao vincular."); throw new Error(m); }
-      if (data?.error) throw new Error(data.error);
       toast({ title: "Usuário vinculado", description: `${linkDialog.name} vinculado a "${tenants.find((t) => t.id === linkTargetTenant)?.name}".` });
       setLinkDialog({ open: false, userId: "", name: "", email: "" });
       setLinkTargetTenant(""); setLinkRole("viewer");
@@ -288,19 +219,31 @@ export default function AdminUsersPage() {
     if (!deleteDialog.userId) return;
     setDeleting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("delete-user", {
-        body: { user_id: deleteDialog.userId },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      await deleteUserService(deleteDialog.userId);
       toast({ title: "Usuário excluído", description: `${deleteDialog.name} foi removido permanentemente.` });
       setDeleteDialog({ open: false, userId: "", name: "" });
       await fetchData();
     } catch (err: any) {
-      const desc = await getFunctionErrorMessage(err, "Falha ao excluir usuário.");
-      toast({ variant: "destructive", title: "Erro", description: desc });
+      toast({ variant: "destructive", title: "Erro", description: err.message });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    if (!unlinkTargetTenant) return;
+    setRemoving(true);
+    try {
+      await unlinkUser({ user_id: unlinkDialog.userId, tenant_id: unlinkTargetTenant });
+      const tName = tenants.find((t) => t.id === unlinkTargetTenant)?.name ?? "";
+      toast({ title: "Vínculo removido", description: `${unlinkDialog.name} desvinculado de "${tName}".` });
+      setUnlinkDialog({ open: false, userId: "", name: "", userTenantIds: [] });
+      setUnlinkTargetTenant("");
+      await fetchData();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Erro", description: err.message || "Falha ao desvincular." });
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -342,7 +285,7 @@ export default function AdminUsersPage() {
             isSelf ? (
               <Badge variant={getRoleBadgeVariant(roleInScope!)}>{roleInScope}</Badge>
             ) : (
-              <Select value={roleInScope!} onValueChange={(v) => handleRoleChange(p.id, v, scopeTenantId, p.email, p.display_name)}>
+              <Select value={roleInScope!} onValueChange={(v) => handleRoleChange(p.id, v, scopeTenantId)}>
                 <SelectTrigger className="w-28 h-8 mx-auto bg-muted/50 border-border text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -368,9 +311,7 @@ export default function AdminUsersPage() {
           {!isSelf && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="w-4 h-4" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem onClick={() => openPermissionDialog(p, scopeTenantId)}>
@@ -408,21 +349,15 @@ export default function AdminUsersPage() {
     );
   };
 
-  const renderTable = (list: typeof allUserProfiles, scopeTenantId: string | null) => {
-    const VIRTUALIZE_THRESHOLD = 30;
-    const ROW_EST = 52;
-    const useVirtual = list.length > VIRTUALIZE_THRESHOLD;
-
-    return (
-      <VirtualizedAdminTable
-        list={list}
-        scopeTenantId={scopeTenantId}
-        renderUserRow={renderUserRow}
-        useVirtual={useVirtual}
-        rowEstimate={ROW_EST}
-      />
-    );
-  };
+  const renderTable = (list: typeof allUserProfiles, scopeTenantId: string | null) => (
+    <VirtualizedAdminTable
+      list={list}
+      scopeTenantId={scopeTenantId}
+      renderUserRow={renderUserRow}
+      useVirtual={list.length > 30}
+      rowEstimate={52}
+    />
+  );
 
   const renderFilters = (showOrgFilter: boolean) => (
     <div className="flex items-center gap-2 flex-wrap">
@@ -468,12 +403,8 @@ export default function AdminUsersPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <TabsList className="bg-transparent border-b border-border rounded-none h-auto p-0 gap-0">
-            <TabsTrigger value="all" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary px-4 py-2 text-sm">
-              All users
-            </TabsTrigger>
-            <TabsTrigger value="org" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary px-4 py-2 text-sm">
-              Organization users
-            </TabsTrigger>
+            <TabsTrigger value="all" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary px-4 py-2 text-sm">All users</TabsTrigger>
+            <TabsTrigger value="org" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary px-4 py-2 text-sm">Organization users</TabsTrigger>
           </TabsList>
           {activeTab === "org" && (
             <Button size="sm" onClick={() => { setInviteForm(f => ({ ...f, target_tenant_id: selectedTenantId || "" })); setInviteOpen(true); }} disabled={!selectedTenantId}>
@@ -507,9 +438,7 @@ export default function AdminUsersPage() {
                 {isSuperAdmin && tenants.length > 1 && (
                   <Select value={selectedTenantId ?? ""} onValueChange={setSelectedTenantId}>
                     <SelectTrigger className="w-48 h-9 bg-muted/50 border-border text-xs"><SelectValue placeholder="Organização" /></SelectTrigger>
-                    <SelectContent>
-                      {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                   </Select>
                 )}
                 {!isSuperAdmin && tenant && (
@@ -536,9 +465,7 @@ export default function AdminUsersPage() {
                 <Label className="text-xs text-muted-foreground">Organização *</Label>
                 <Select value={inviteForm.target_tenant_id || selectedTenantId || ""} onValueChange={(v) => setInviteForm((f) => ({ ...f, target_tenant_id: v }))}>
                   <SelectTrigger className="bg-muted/50 border-border"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                  </SelectContent>
+                  <SelectContent>{tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             )}
@@ -556,10 +483,8 @@ export default function AdminUsersPage() {
               <Select value={inviteForm.role} onValueChange={(v) => setInviteForm((f) => ({ ...f, role: v }))}>
                 <SelectTrigger className="bg-muted/50 border-border"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="tech">Técnico</SelectItem>
-                  <SelectItem value="sales">Vendedor</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem><SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="tech">Técnico</SelectItem><SelectItem value="sales">Vendedor</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
@@ -595,7 +520,7 @@ export default function AdminUsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Unlink from Org Dialog (All users tab) ── */}
+      {/* ── Unlink from Org Dialog ── */}
       <Dialog open={unlinkDialog.open} onOpenChange={(o) => !removing && setUnlinkDialog((s) => ({ ...s, open: o }))}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -616,34 +541,14 @@ export default function AdminUsersPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setUnlinkDialog({ open: false, userId: "", name: "", userTenantIds: [] })} disabled={removing}>Cancelar</Button>
-            <Button variant="destructive" onClick={async () => {
-              if (!unlinkTargetTenant) return;
-              setRemoving(true);
-              try {
-                const { data, error } = await supabase.functions.invoke("tenant-admin", {
-                  body: { action: "unlink", user_id: unlinkDialog.userId, tenant_id: unlinkTargetTenant },
-                });
-                if (error) {
-                  const msg = await getFunctionErrorMessage(error, "Falha ao desvincular usuário.");
-                  throw new Error(msg);
-                }
-                if (data?.error) throw new Error(data.error);
-                const tName = tenants.find((t) => t.id === unlinkTargetTenant)?.name ?? "";
-                toast({ title: "Vínculo removido", description: `${unlinkDialog.name} desvinculado de "${tName}".` });
-                setUnlinkDialog({ open: false, userId: "", name: "", userTenantIds: [] });
-                setUnlinkTargetTenant("");
-                await fetchData();
-              } catch (err: any) {
-                toast({ variant: "destructive", title: "Erro", description: err.message || "Falha ao desvincular. Verifique se a Edge Function está atualizada." });
-              } finally {
-                setRemoving(false);
-              }
-            }} disabled={removing || !unlinkTargetTenant}>
+            <Button variant="destructive" onClick={handleUnlink} disabled={removing || !unlinkTargetTenant}>
               {removing ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <UserX className="w-4 h-4 mr-1" />} Desvincular
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Link Dialog ── */}
       <Dialog open={linkDialog.open} onOpenChange={(o) => !linking && setLinkDialog((s) => ({ ...s, open: o }))}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -655,9 +560,7 @@ export default function AdminUsersPage() {
               <Label className="text-xs text-muted-foreground">Organização destino</Label>
               <Select value={linkTargetTenant} onValueChange={setLinkTargetTenant}>
                 <SelectTrigger className="bg-muted/50 border-border"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
+                <SelectContent>{tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
@@ -665,10 +568,8 @@ export default function AdminUsersPage() {
               <Select value={linkRole} onValueChange={setLinkRole}>
                 <SelectTrigger className="bg-muted/50 border-border"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="tech">Técnico</SelectItem>
-                  <SelectItem value="sales">Vendedor</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem><SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="tech">Técnico</SelectItem><SelectItem value="sales">Vendedor</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
@@ -693,18 +594,9 @@ export default function AdminUsersPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Organização</Label>
-              <Select
-                value={permissionDialog.tenantId}
-                onValueChange={(tenantId) => setPermissionDialog((s) => ({
-                  ...s,
-                  tenantId,
-                  role: getRoleForUser(s.userId, tenantId) ?? "viewer",
-                }))}
-              >
+              <Select value={permissionDialog.tenantId} onValueChange={(tenantId) => setPermissionDialog((s) => ({ ...s, tenantId, role: getRoleForUser(s.userId, tenantId) ?? "viewer" }))}>
                 <SelectTrigger className="bg-muted/50 border-border"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
+                <SelectContent>{tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
@@ -712,19 +604,15 @@ export default function AdminUsersPage() {
               <Select value={permissionDialog.role} onValueChange={(role) => setPermissionDialog((s) => ({ ...s, role }))}>
                 <SelectTrigger className="bg-muted/50 border-border"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="tech">Técnico</SelectItem>
-                  <SelectItem value="sales">Vendedor</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem><SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="tech">Técnico</SelectItem><SelectItem value="sales">Vendedor</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" })} disabled={savingPermission}>
-              Cancelar
-            </Button>
+            <Button variant="ghost" onClick={() => setPermissionDialog({ open: false, userId: "", name: "", email: "", tenantId: "", role: "viewer" })} disabled={savingPermission}>Cancelar</Button>
             <Button onClick={handlePermissionSave} disabled={savingPermission || !permissionDialog.tenantId}>
               {savingPermission ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />} Salvar permissões
             </Button>
@@ -755,11 +643,7 @@ export default function AdminUsersPage() {
 
 /** Extracted table component with optional virtualization */
 function VirtualizedAdminTable({
-  list,
-  scopeTenantId,
-  renderUserRow,
-  useVirtual,
-  rowEstimate,
+  list, scopeTenantId, renderUserRow, useVirtual, rowEstimate,
 }: {
   list: any[];
   scopeTenantId: string | null;
@@ -768,13 +652,9 @@ function VirtualizedAdminTable({
   rowEstimate: number;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
-
   const virtualizer = useVirtualizer({
-    count: list.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => rowEstimate,
-    overscan: 8,
-    enabled: useVirtual,
+    count: list.length, getScrollElement: () => parentRef.current,
+    estimateSize: () => rowEstimate, overscan: 8, enabled: useVirtual,
   });
 
   const headerCells = (
@@ -806,30 +686,15 @@ function VirtualizedAdminTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>{headerCells}</thead>
-      </table>
+      <table className="w-full text-sm"><thead>{headerCells}</thead></table>
       <div ref={parentRef} className="max-h-[60vh] overflow-auto">
         <table className="w-full text-sm">
           <tbody style={{ height: virtualizer.getTotalSize(), position: "relative", display: "block" }}>
             {virtualizer.getVirtualItems().map((vRow) => (
-              <tr
-                key={vRow.index}
-                data-index={vRow.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${vRow.start}px)`,
-                  display: "table-row",
-                }}
-              >
-                {/* Re-render the user row content inline */}
+              <tr key={vRow.index} data-index={vRow.index} ref={virtualizer.measureElement}
+                style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vRow.start}px)`, display: "table-row" }}>
                 {(() => {
                   const node = renderUserRow(list[vRow.index], scopeTenantId);
-                  // renderUserRow returns a <tr>, extract its children
                   return node && typeof node === "object" && "props" in node ? node.props.children : node;
                 })()}
               </tr>
