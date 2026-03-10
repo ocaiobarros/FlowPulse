@@ -6,9 +6,10 @@ import {
   FileText, Clock, Settings, Users, Zap, ChevronRight,
   Server, Box, MonitorCheck, Fuel, Globe, LayoutDashboard,
   RefreshCw, Send, UserCog, BookOpen, HelpCircle, Home, ExternalLink, Eye,
-  Printer, DollarSign,
+  Printer, DollarSign, ShieldCheck,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { usePlatformAdmin } from "@/hooks/usePlatformAdmin";
 import {
   Sidebar,
   SidebarContent,
