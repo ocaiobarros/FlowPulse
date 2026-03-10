@@ -52,6 +52,13 @@ const cards: AdminCard[] = [
     path: "/app/settings/admin/diagnostics",
     color: "border-l-amber-500",
   },
+  {
+    title: "Billing & Planos",
+    description: "Gerencie planos, limites de uso e informações de faturamento.",
+    icon: CreditCard,
+    path: "/app/settings/admin/billing",
+    color: "border-l-pink-500",
+  },
 ];
 
 export default function AdminLanding() {
