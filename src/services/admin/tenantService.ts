@@ -1,5 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export async function updateTenantPlan(tenantId: string, plan: string) {
+  const { data, error } = await supabase.functions.invoke("tenant-admin", {
+    body: { action: "update_plan", tenant_id: tenantId, plan },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+
 async function extractError(err: any, fallback: string): Promise<string> {
   const context = err?.context;
   if (context?.clone && typeof context.clone === "function") {

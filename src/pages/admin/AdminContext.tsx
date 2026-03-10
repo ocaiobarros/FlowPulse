@@ -143,7 +143,7 @@ export default function AdminLayout() {
         }
       } else {
         const [tRes, mRes] = await Promise.all([
-          supabase.from("tenants").select("id, name, slug, created_at").order("created_at", { ascending: true }),
+          supabase.from("tenants").select("id, name, slug, plan, max_users, max_teams, max_dashboards, max_integrations, created_at").order("created_at", { ascending: true }),
           supabase.functions.invoke("tenant-admin", { body: { action: "members" } }),
         ]);
         if (tRes.error) throw tRes.error;
