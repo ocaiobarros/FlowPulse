@@ -282,6 +282,7 @@ export default function AdminUsersPage() {
       toast({ title: "Usuário vinculado", description: `${linkDialog.name} vinculado a "${tenants.find((t) => t.id === linkTargetTenant)?.name}".` });
       setLinkDialog({ open: false, userId: "", name: "", email: "" });
       setLinkTargetTenant(""); setLinkRole("viewer");
+      await refreshSession();
       await fetchData();
     } catch (err: any) {
       toast({ variant: "destructive", title: "Erro", description: err.message });
