@@ -247,7 +247,10 @@ export default function AdminUsersPage() {
       const { data, error } = await supabase.functions.invoke("tenant-admin", {
         body: { action: "unlink", user_id: removeDialog.userId, tenant_id: removeDialog.tenantId },
       });
-      if (error) throw error;
+      if (error) {
+        const msg = await getFunctionErrorMessage(error, "Falha ao remover acesso.");
+        throw new Error(msg);
+      }
       if (data?.error) throw new Error(data.error);
       toast({ title: "Acesso removido", description: `${removeDialog.name} removido da organização.` });
       setRemoveDialog({ open: false, userId: "", name: "", tenantId: "" });
