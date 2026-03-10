@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useResourceAccess } from "@/hooks/useResourceAccess";
 import { useUserRole } from "@/hooks/useUserRole";
+import { fetchTenantUsersAndTeams } from "@/services/admin/permissionService";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
