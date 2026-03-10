@@ -59,6 +59,13 @@ const cards: AdminCard[] = [
     path: "/app/settings/admin/billing",
     color: "border-l-pink-500",
   },
+  {
+    title: "Audit Explorer",
+    description: "Investigue ações, rastreie mudanças e analise operações na plataforma.",
+    icon: FileSearch,
+    path: "/app/settings/admin/audit",
+    color: "border-l-violet-500",
+  },
 ];
 
 export default function AdminLanding() {
