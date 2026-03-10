@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdmin, getFunctionErrorMessage, type Profile, type UserRole } from "./AdminContext";
+import { useTenantFilter } from "@/hooks/useTenantFilter";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
