@@ -170,6 +170,7 @@ export function AppSidebar() {
   const { t } = useTranslation();
   const collapsed = state === "collapsed";
   const { operationsItems, monitoringItems, engineeringItems, financeItems, governanceItems, settingsItems, systemItems } = useSidebarItems();
+  const { isPlatformAdmin } = usePlatformAdmin();
   const [supportOpen, setSupportOpen] = useState(false);
 
   return (
