@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
 
     let membersTenantScope: string | null = String(body?.tenant_id || "").trim() || null;
 
-    const tenantAdminActions = ["members", "tenant_users", "unlink", "tenant_teams", "create_team", "update_team", "delete_team", "add_team_member", "remove_team_member", "update_tenant", "set_user_role", "grant_access", "revoke_access", "update_access_level"];
+    const tenantAdminActions = ["members", "tenant_users", "unlink", "tenant_teams", "create_team", "update_team", "delete_team", "add_team_member", "remove_team_member", "update_tenant", "update_plan", "set_user_role", "grant_access", "revoke_access", "update_access_level"];
     if (tenantAdminActions.includes(action) && !isSuperAdmin) {
       const tenantToCheck = membersTenantScope || String(callerTenant || "");
 
@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
       stage = "list_tenants";
       const { data: allTenants, error: listErr } = await adminClient
         .from("tenants")
-        .select("id, name, slug, created_at, updated_at")
+        .select("id, name, slug, plan, max_users, max_teams, max_dashboards, max_integrations, created_at, updated_at")
         .order("created_at", { ascending: false });
 
       if (listErr) {
@@ -454,6 +454,19 @@ Deno.serve(async (req) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
+      // Plan limit check
+      stage = "plan_limit_check_team";
+      const { data: teamLimits } = await adminClient.from("tenants").select("plan, max_teams").eq("id", tenantId).single();
+      if (teamLimits) {
+        const { count: currentTeamCount } = await adminClient.from("teams").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId);
+        if ((currentTeamCount ?? 0) >= teamLimits.max_teams) {
+          return new Response(JSON.stringify({
+            error: `Limite de times atingido (${teamLimits.max_teams}) para o plano "${teamLimits.plan}". Faça upgrade para criar mais times.`,
+          }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
       stage = "create_team";
       const { data: team, error: teamErr } = await adminClient.from("teams").insert({
         tenant_id: tenantId,
@@ -575,6 +588,44 @@ Deno.serve(async (req) => {
         await writeAudit(memberInfo.tenant_id, "remove_team_member", "team", memberInfo.team_id, { user_id: memberInfo.user_id });
       }
       return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    /* ── UPDATE_PLAN ── */
+    if (action === "update_plan") {
+      const tenantId = String(body?.tenant_id || "").trim();
+      const plan = String(body?.plan || "").trim();
+      if (!tenantId || !plan) {
+        return new Response(JSON.stringify({ error: "tenant_id and plan are required", stage }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const planLimits: Record<string, { max_users: number; max_teams: number; max_dashboards: number; max_integrations: number }> = {
+        starter: { max_users: 10, max_teams: 5, max_dashboards: 20, max_integrations: 3 },
+        growth: { max_users: 50, max_teams: 20, max_dashboards: 100, max_integrations: 10 },
+        enterprise: { max_users: 500, max_teams: 100, max_dashboards: 1000, max_integrations: 50 },
+      };
+      const limits = planLimits[plan];
+      if (!limits) {
+        return new Response(JSON.stringify({ error: "Invalid plan. Allowed: starter, growth, enterprise", stage }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      stage = "update_plan";
+      const { error: upErr } = await adminClient.from("tenants").update({ plan, ...limits }).eq("id", tenantId);
+      if (upErr) {
+        return new Response(JSON.stringify({ error: upErr.message, stage }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Upsert billing record
+      await adminClient.from("tenant_billing").upsert(
+        { tenant_id: tenantId, plan, status: "active" },
+        { onConflict: "tenant_id" }
+      );
+      await writeAudit(tenantId, "update_plan", "tenant", tenantId, { plan, ...limits });
+      return new Response(JSON.stringify({ success: true, plan, limits }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

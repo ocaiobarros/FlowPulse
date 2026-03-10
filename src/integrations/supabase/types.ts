@@ -1788,25 +1788,122 @@ export type Database = {
           },
         ]
       }
+      tenant_billing: {
+        Row: {
+          billing_email: string | null
+          created_at: string
+          id: string
+          plan: string
+          renewal_date: string | null
+          status: string
+          subscription_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          billing_email?: string | null
+          created_at?: string
+          id?: string
+          plan?: string
+          renewal_date?: string | null
+          status?: string
+          subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          billing_email?: string | null
+          created_at?: string
+          id?: string
+          plan?: string
+          renewal_date?: string | null
+          status?: string
+          subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_billing_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_sso: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          provider: string
+          saml_metadata: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          provider?: string
+          saml_metadata?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          provider?: string
+          saml_metadata?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_sso_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string
           id: string
+          max_dashboards: number
+          max_integrations: number
+          max_teams: number
+          max_users: number
           name: string
+          plan: string
           slug: string
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
+          max_dashboards?: number
+          max_integrations?: number
+          max_teams?: number
+          max_users?: number
           name: string
+          plan?: string
           slug: string
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
+          max_dashboards?: number
+          max_integrations?: number
+          max_teams?: number
+          max_users?: number
           name?: string
+          plan?: string
           slug?: string
           updated_at?: string
         }

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Users, Building2, Cable, Radio, Activity, Zap, Rocket, UsersRound } from "lucide-react";
+import { Users, Building2, Cable, Radio, Activity, Zap, Rocket, UsersRound, CreditCard } from "lucide-react";
 
 interface AdminCard {
   title: string;
@@ -51,6 +51,13 @@ const cards: AdminCard[] = [
     icon: Zap,
     path: "/app/settings/admin/diagnostics",
     color: "border-l-amber-500",
+  },
+  {
+    title: "Billing & Planos",
+    description: "Gerencie planos, limites de uso e informações de faturamento.",
+    icon: CreditCard,
+    path: "/app/settings/admin/billing",
+    color: "border-l-pink-500",
   },
 ];
 

@@ -30,6 +30,11 @@ export interface TenantInfo {
   id: string;
   name: string;
   slug: string;
+  plan?: string;
+  max_users?: number;
+  max_teams?: number;
+  max_dashboards?: number;
+  max_integrations?: number;
   created_at: string;
 }
 
@@ -110,7 +115,7 @@ export default function AdminLayout() {
           supabase.from("profiles").select("*").order("created_at", { ascending: true }),
         ]);
         if (tRes.error || tRes.data?.error) {
-          const { data } = await supabase.from("tenants").select("id, name, slug, created_at").order("created_at", { ascending: true });
+          const { data } = await supabase.from("tenants").select("id, name, slug, plan, max_users, max_teams, max_dashboards, max_integrations, created_at").order("created_at", { ascending: true });
           allTenants = (data ?? []) as TenantInfo[];
         } else {
           allTenants = (tRes.data?.tenants ?? []) as TenantInfo[];
@@ -138,7 +143,7 @@ export default function AdminLayout() {
         }
       } else {
         const [tRes, mRes] = await Promise.all([
-          supabase.from("tenants").select("id, name, slug, created_at").order("created_at", { ascending: true }),
+          supabase.from("tenants").select("id, name, slug, plan, max_users, max_teams, max_dashboards, max_integrations, created_at").order("created_at", { ascending: true }),
           supabase.functions.invoke("tenant-admin", { body: { action: "members" } }),
         ]);
         if (tRes.error) throw tRes.error;

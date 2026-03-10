@@ -34,6 +34,7 @@ const AdminConnectionsPage = lazyRetry(() => import("./pages/admin/AdminConnecti
 const AdminTelemetryPage = lazyRetry(() => import("./pages/admin/AdminTelemetryPage"));
 const AdminOpsPage = lazyRetry(() => import("./pages/admin/AdminOpsPage"));
 const AdminDiagPage = lazyRetry(() => import("./pages/admin/AdminDiagPage"));
+const AdminBillingPage = lazyRetry(() => import("./pages/admin/AdminBillingPage"));
 const VirtualizationMonitor = lazyRetry(() => import("./pages/VirtualizationMonitor"));
 const VirtualMachinesMonitor = lazyRetry(() => import("./pages/VirtualMachinesMonitor"));
 const BgpFlowMonitor = lazyRetry(() => import("./pages/BgpFlowMonitor"));
@@ -168,6 +169,7 @@ const App = () => (
                             <Route path="telemetry" element={<AdminTelemetryPage />} />
                             <Route path="ops" element={<AdminOpsPage />} />
                             <Route path="diagnostics" element={<AdminDiagPage />} />
+                            <Route path="billing" element={<AdminBillingPage />} />
                           </Route>
                           <Route path="settings/profile" element={<UserSettings />} />
                           <Route path="settings/telegram" element={

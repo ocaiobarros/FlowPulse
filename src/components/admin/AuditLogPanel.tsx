@@ -44,6 +44,16 @@ const TABLE_LABELS: Record<string, { label: string; icon: typeof MapPin }> = {
   flow_map_reservas: { label: "Reserva", icon: Bookmark },
   flow_map_hosts: { label: "Host", icon: MapPin },
   flow_map_links: { label: "Link", icon: Cable },
+  dashboards: { label: "Dashboard", icon: MapPin },
+  teams: { label: "Time", icon: User },
+  profiles: { label: "Perfil", icon: User },
+  user_roles: { label: "Papel", icon: User },
+  resource_access: { label: "Permissão", icon: User },
+  tenants: { label: "Organização", icon: MapPin },
+  zabbix_connections: { label: "Conexão Zabbix", icon: Cable },
+  rms_connections: { label: "Conexão RMS", icon: Cable },
+  alert_rules: { label: "Regra de Alerta", icon: MapPin },
+  maintenance_windows: { label: "Manutenção", icon: Clock },
 };
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -95,6 +105,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function AuditLogPanel() {
+  const [source, setSource] = useState<"infra" | "admin">("infra");
   const [tableFilter, setTableFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
@@ -113,8 +124,37 @@ export default function AuditLogPanel() {
   }, [periodFilter]);
 
   const { data: logs, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["audit-logs", tableFilter, actionFilter, periodFilter],
+    queryKey: ["audit-logs", source, tableFilter, actionFilter, periodFilter],
     queryFn: async () => {
+      const table = source === "admin" ? "audit_logs" : "flow_audit_logs";
+
+      if (source === "admin") {
+        let query = supabase
+          .from("audit_logs")
+          .select("*")
+          .gte("created_at", periodStart)
+          .order("created_at", { ascending: false })
+          .limit(200);
+
+        if (actionFilter !== "all") query = query.eq("action", actionFilter);
+
+        const { data, error } = await query;
+        if (error) throw error;
+        // Map audit_logs to AuditLogEntry shape
+        return (data ?? []).map((row: any) => ({
+          id: row.id,
+          tenant_id: row.tenant_id,
+          user_id: row.user_id,
+          user_email: null,
+          action: row.action,
+          table_name: row.entity_type ?? "—",
+          record_id: row.entity_id,
+          old_data: null,
+          new_data: row.details ?? null,
+          created_at: row.created_at,
+        })) as AuditLogEntry[];
+      }
+
       let query = supabase
         .from("flow_audit_logs")
         .select("*")
@@ -152,6 +192,22 @@ export default function AuditLogPanel() {
     <div className="space-y-4">
       {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Source Toggle */}
+        <div className="flex rounded-lg border border-border overflow-hidden">
+          <button
+            onClick={() => setSource("infra")}
+            className={`px-3 h-9 text-xs font-medium transition-colors ${source === "infra" ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}
+          >
+            Infraestrutura
+          </button>
+          <button
+            onClick={() => setSource("admin")}
+            className={`px-3 h-9 text-xs font-medium transition-colors ${source === "admin" ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}
+          >
+            Admin
+          </button>
+        </div>
+
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -161,19 +217,21 @@ export default function AuditLogPanel() {
             className="pl-9 bg-muted/50 border-border text-sm h-9"
           />
         </div>
-        <Select value={tableFilter} onValueChange={setTableFilter}>
-          <SelectTrigger className="w-36 h-9 bg-muted/50 border-border text-xs">
-            <SelectValue placeholder="Tabela" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas tabelas</SelectItem>
-            <SelectItem value="flow_map_ctos">CTOs</SelectItem>
-            <SelectItem value="flow_map_cables">Cabos</SelectItem>
-            <SelectItem value="flow_map_reservas">Reservas</SelectItem>
-            <SelectItem value="flow_map_hosts">Hosts</SelectItem>
-            <SelectItem value="flow_map_links">Links</SelectItem>
-          </SelectContent>
-        </Select>
+        {source === "infra" && (
+          <Select value={tableFilter} onValueChange={setTableFilter}>
+            <SelectTrigger className="w-36 h-9 bg-muted/50 border-border text-xs">
+              <SelectValue placeholder="Tabela" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas tabelas</SelectItem>
+              <SelectItem value="flow_map_ctos">CTOs</SelectItem>
+              <SelectItem value="flow_map_cables">Cabos</SelectItem>
+              <SelectItem value="flow_map_reservas">Reservas</SelectItem>
+              <SelectItem value="flow_map_hosts">Hosts</SelectItem>
+              <SelectItem value="flow_map_links">Links</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Select value={actionFilter} onValueChange={setActionFilter}>
           <SelectTrigger className="w-32 h-9 bg-muted/50 border-border text-xs">
             <SelectValue placeholder="Ação" />
