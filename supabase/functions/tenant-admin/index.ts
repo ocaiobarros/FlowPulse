@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
 
     let membersTenantScope: string | null = String(body?.tenant_id || "").trim() || null;
 
-    if ((action === "members" || action === "tenant_users" || action === "unlink") && !isSuperAdmin) {
+    if ((action === "members" || action === "tenant_users" || action === "unlink" || action === "tenant_teams") && !isSuperAdmin) {
       const tenantToCheck = membersTenantScope || String(callerTenant || "");
 
       if (!tenantToCheck) {
