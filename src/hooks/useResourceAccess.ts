@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import {
+  grantAccess,
+  revokeAccess,
+  updateAccessLevel,
+} from "@/services/admin/permissionService";
 
 export interface ResourceGrant {
   id: string;
@@ -11,14 +16,12 @@ export interface ResourceGrant {
   access_level: "viewer" | "editor";
   granted_by: string | null;
   created_at: string;
-  // joined externally
   grantee_name?: string;
 }
 
 export function useResourceAccess(
   resourceType: string,
   resourceId: string | undefined,
-  /** Optional name map (id → displayName) to resolve grantee names without extra queries */
   nameMap?: Record<string, string>,
 ) {
   const queryClient = useQueryClient();
@@ -28,21 +31,13 @@ export function useResourceAccess(
     if (!resourceId) return null;
 
     if (resourceType === "dashboard") {
-      const { data, error } = await supabase
-        .from("dashboards")
-        .select("tenant_id")
-        .eq("id", resourceId)
-        .maybeSingle();
+      const { data, error } = await supabase.from("dashboards").select("tenant_id").eq("id", resourceId).maybeSingle();
       if (error) throw error;
       return data?.tenant_id ?? tenantId;
     }
 
     if (resourceType === "flow_map") {
-      const { data, error } = await supabase
-        .from("flow_maps")
-        .select("tenant_id")
-        .eq("id", resourceId)
-        .maybeSingle();
+      const { data, error } = await supabase.from("flow_maps").select("tenant_id").eq("id", resourceId).maybeSingle();
       if (error) throw error;
       return data?.tenant_id ?? tenantId;
     }
@@ -64,7 +59,6 @@ export function useResourceAccess(
     },
   });
 
-  // Enrich grants with names from the external nameMap
   const enrichedGrants: ResourceGrant[] = grants.map((g) => ({
     ...g,
     grantee_name: nameMap?.[g.grantee_id] || g.grantee_id,
@@ -73,46 +67,31 @@ export function useResourceAccess(
   const addGrant = useMutation({
     mutationFn: async (params: { grantee_type: "user" | "team"; grantee_id: string; access_level: "viewer" | "editor" }) => {
       if (!resourceId) throw new Error("Contexto ausente: resourceId não definido");
-
       const resolvedTenantId = await resolveResourceTenantId();
       if (!resolvedTenantId) throw new Error("Tenant do recurso não identificado");
 
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: {
-          action: "grant_access",
-          tenant_id: resolvedTenantId,
-          resource_type: resourceType,
-          resource_id: resourceId,
-          grantee_type: params.grantee_type,
-          grantee_id: params.grantee_id,
-          access_level: params.access_level,
-        },
+      await grantAccess({
+        tenant_id: resolvedTenantId,
+        resource_type: resourceType,
+        resource_id: resourceId,
+        grantee_type: params.grantee_type,
+        grantee_id: params.grantee_id,
+        access_level: params.access_level,
       });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["resource-access", resourceType, resourceId] }),
   });
 
   const removeGrant = useMutation({
     mutationFn: async (grantId: string) => {
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: { action: "revoke_access", grant_id: grantId },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      await revokeAccess(grantId);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["resource-access", resourceType, resourceId] }),
   });
 
   const updateLevel = useMutation({
     mutationFn: async (params: { grantId: string; access_level: "viewer" | "editor" }) => {
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: { action: "update_access_level", grant_id: params.grantId, access_level: params.access_level },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      await updateAccessLevel(params.grantId, params.access_level);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["resource-access", resourceType, resourceId] }),
   });

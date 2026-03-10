@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useResourceAccess } from "@/hooks/useResourceAccess";
 import { useUserRole } from "@/hooks/useUserRole";
+import { supabase } from "@/integrations/supabase/client";
+import { fetchTenantUsersAndTeams } from "@/services/admin/permissionService";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -62,31 +63,15 @@ function AccessControlContent({ resourceType, resourceId }: { resourceType: stri
     },
   });
 
-  // Load users and teams via edge function (bypasses RLS)
+  // Load users and teams via service layer
   const { data: tenantData, isLoading: tenantDataLoading } = useQuery({
     queryKey: ["tenant-users-teams", resourceTenantId],
     enabled: !!resourceTenantId,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("tenant-admin", {
-        body: { action: "tenant_users", tenant_id: resourceTenantId },
-      });
-
-      if (error || data?.error) {
-        console.error("[AccessControlPanel] tenant_users error:", error || data?.error);
-        // Fallback to direct query
-        const [usersRes, teamsRes] = await Promise.all([
-          supabase.from("profiles").select("id, display_name, email").eq("tenant_id", resourceTenantId!),
-          supabase.from("teams").select("id, name, color").eq("tenant_id", resourceTenantId!),
-        ]);
-        return {
-          users: (usersRes.data ?? []) as TenantUser[],
-          teams: (teamsRes.data ?? []) as TenantTeam[],
-        };
-      }
-
+      const result = await fetchTenantUsersAndTeams(resourceTenantId!);
       return {
-        users: (data?.users ?? []) as TenantUser[],
-        teams: (data?.teams ?? []) as TenantTeam[],
+        users: result.users as TenantUser[],
+        teams: result.teams as TenantTeam[],
       };
     },
   });

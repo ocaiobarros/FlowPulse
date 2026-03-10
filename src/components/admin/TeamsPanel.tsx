@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import {
+  fetchTeams as fetchTeamsService,
+  createTeam,
+  updateTeam,
+  deleteTeam,
+  addTeamMember,
+  removeTeamMember,
+} from "@/services/admin/teamService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,36 +45,17 @@ interface Props {
   profiles: Profile[];
 }
 
-async function invokeTeamAction(action: string, payload: Record<string, unknown>) {
-  const { data, error } = await supabase.functions.invoke("tenant-admin", {
-    body: { action, ...payload },
-  });
-  if (error) {
-    // Try to extract message from FunctionsHttpError
-    let msg = error.message || "Edge Function error";
-    const ctx = (error as any)?.context;
-    if (ctx?.clone) {
-      try { const j = await ctx.clone().json(); if (j?.error) msg = j.error; } catch { /* */ }
-    }
-    throw new Error(msg);
-  }
-  if (data?.error) throw new Error(data.error);
-  return data;
-}
-
 export default function TeamsPanel({ tenantId, profiles }: Props) {
   const { toast } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Create/Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [form, setForm] = useState({ name: "", description: "", color: "#10b981" });
   const [saving, setSaving] = useState(false);
 
-  // Members dialog
   const [membersDialogOpen, setMembersDialogOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [memberSearch, setMemberSearch] = useState("");
@@ -76,17 +64,12 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
     if (!tenantId) return;
     setLoading(true);
     try {
-      const result = await invokeTeamAction("tenant_teams", { tenant_id: tenantId });
+      const result = await fetchTeamsService(tenantId);
       setTeams((result.teams as Team[]) ?? []);
       setMembers((result.members as TeamMember[]) ?? []);
     } catch {
-      // Fallback to direct query
-      const [teamsRes, membersRes] = await Promise.all([
-        supabase.from("teams").select("*").eq("tenant_id", tenantId).order("name"),
-        supabase.from("team_members").select("*").eq("tenant_id", tenantId),
-      ]);
-      setTeams((teamsRes.data as Team[]) ?? []);
-      setMembers((membersRes.data as TeamMember[]) ?? []);
+      setTeams([]);
+      setMembers([]);
     }
     setLoading(false);
   }, [tenantId]);
@@ -110,20 +93,10 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
     setSaving(true);
     try {
       if (editingTeam) {
-        await invokeTeamAction("update_team", {
-          team_id: editingTeam.id,
-          name: form.name.trim(),
-          description: form.description.trim(),
-          color: form.color,
-        });
+        await updateTeam({ team_id: editingTeam.id, name: form.name, description: form.description, color: form.color });
         toast({ title: "Time atualizado" });
       } else {
-        await invokeTeamAction("create_team", {
-          tenant_id: tenantId,
-          name: form.name.trim(),
-          description: form.description.trim(),
-          color: form.color,
-        });
+        await createTeam({ tenant_id: tenantId, name: form.name, description: form.description, color: form.color });
         toast({ title: "Time criado", description: `"${form.name.trim()}" foi criado.` });
       }
       setDialogOpen(false);
@@ -137,7 +110,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
 
   const handleDelete = async (teamId: string) => {
     try {
-      await invokeTeamAction("delete_team", { team_id: teamId });
+      await deleteTeam(teamId);
       toast({ title: "Time excluído" });
       await fetchTeams();
     } catch (err: any) {
@@ -151,16 +124,12 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
     setMembersDialogOpen(true);
   };
 
-  const teamMembers = (teamId: string) => members.filter((m) => m.team_id === teamId);
+  const teamMembersList = (teamId: string) => members.filter((m) => m.team_id === teamId);
 
-  const addMember = async (userId: string) => {
+  const handleAddMember = async (userId: string) => {
     if (!selectedTeam || !tenantId) return;
     try {
-      await invokeTeamAction("add_team_member", {
-        tenant_id: tenantId,
-        team_id: selectedTeam.id,
-        user_id: userId,
-      });
+      await addTeamMember(tenantId, selectedTeam.id, userId);
       toast({ title: "Membro adicionado" });
       await fetchTeams();
     } catch (err: any) {
@@ -168,9 +137,9 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
     }
   };
 
-  const removeMember = async (memberId: string) => {
+  const handleRemoveMember = async (memberId: string) => {
     try {
-      await invokeTeamAction("remove_team_member", { member_id: memberId });
+      await removeTeamMember(memberId);
       toast({ title: "Membro removido" });
       await fetchTeams();
     } catch (err: any) {
@@ -180,7 +149,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
 
   const getProfile = (userId: string) => profiles.find((p) => p.id === userId);
 
-  const currentTeamMemberIds = selectedTeam ? teamMembers(selectedTeam.id).map((m) => m.user_id) : [];
+  const currentTeamMemberIds = selectedTeam ? teamMembersList(selectedTeam.id).map((m) => m.user_id) : [];
   const availableProfiles = profiles.filter((p) =>
     !currentTeamMemberIds.includes(p.id) &&
     (memberSearch === "" ||
@@ -199,19 +168,13 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Users className="w-5 h-5 text-primary" />
-          <h2 className="text-base font-bold font-[Orbitron] tracking-wide text-foreground">
-            TIMES ({teams.length})
-          </h2>
+          <h2 className="text-base font-bold font-[Orbitron] tracking-wide text-foreground">TIMES ({teams.length})</h2>
         </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="w-4 h-4 mr-1" /> Novo Time
-        </Button>
+        <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-1" /> Novo Time</Button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-primary" />
-        </div>
+        <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
       ) : teams.length === 0 ? (
         <div className="text-center py-12">
           <Users className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
@@ -221,7 +184,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {teams.map((t) => {
-            const mems = teamMembers(t.id);
+            const mems = teamMembersList(t.id);
             return (
               <div key={t.id} className="rounded-lg border border-border bg-muted/20 p-4 hover:border-primary/30 transition-colors">
                 <div className="flex items-start justify-between mb-3">
@@ -230,24 +193,14 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
                     <h3 className="text-sm font-bold text-foreground">{t.name}</h3>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)} title="Editar">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(t.id)} title="Excluir">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)} title="Editar"><Pencil className="w-3.5 h-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(t.id)} title="Excluir"><Trash2 className="w-3.5 h-3.5" /></Button>
                   </div>
                 </div>
                 {t.description && <p className="text-xs text-muted-foreground mb-3">{t.description}</p>}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {mems.length} membro{mems.length !== 1 ? "s" : ""}
-                    </Badge>
-                  </div>
-                  <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={() => openMembers(t)}>
-                    <UserPlus className="w-3 h-3" /> Gerenciar
-                  </Button>
+                  <Badge variant="secondary" className="text-[10px]">{mems.length} membro{mems.length !== 1 ? "s" : ""}</Badge>
+                  <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={() => openMembers(t)}><UserPlus className="w-3 h-3" /> Gerenciar</Button>
                 </div>
                 {mems.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-3">
@@ -273,20 +226,16 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editingTeam ? "Editar Time" : "Novo Time"}</DialogTitle>
-            <DialogDescription>
-              {editingTeam ? "Atualize as informações do time." : "Crie um novo time dentro da organização."}
-            </DialogDescription>
+            <DialogDescription>{editingTeam ? "Atualize as informações do time." : "Crie um novo time dentro da organização."}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Nome do Time</Label>
-              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Ex: Suporte, Rede, Comercial" className="bg-muted/50 border-border" />
+              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Suporte, Rede, Comercial" className="bg-muted/50 border-border" />
             </div>
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Descrição</Label>
-              <Input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Descrição opcional" className="bg-muted/50 border-border" />
+              <Input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Descrição opcional" className="bg-muted/50 border-border" />
             </div>
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Cor</Label>
@@ -319,13 +268,12 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
             <DialogDescription>Adicione ou remova membros deste time.</DialogDescription>
           </DialogHeader>
 
-          {/* Current members */}
           <div className="space-y-2 max-h-40 overflow-y-auto">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Membros atuais</p>
-            {selectedTeam && teamMembers(selectedTeam.id).length === 0 && (
+            {selectedTeam && teamMembersList(selectedTeam.id).length === 0 && (
               <p className="text-xs text-muted-foreground italic">Nenhum membro neste time.</p>
             )}
-            {selectedTeam && teamMembers(selectedTeam.id).map((m) => {
+            {selectedTeam && teamMembersList(selectedTeam.id).map((m) => {
               const p = getProfile(m.user_id);
               return (
                 <div key={m.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/30 border border-border/50">
@@ -335,7 +283,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
                     </div>
                     <span className="text-sm text-foreground">{p?.display_name ?? p?.email ?? "—"}</span>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={() => removeMember(m.id)}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={() => handleRemoveMember(m.id)}>
                     <X className="w-3.5 h-3.5" />
                   </Button>
                 </div>
@@ -343,7 +291,6 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
             })}
           </div>
 
-          {/* Add members */}
           <div className="space-y-2 mt-4">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Adicionar membros</p>
             <div className="relative">
@@ -353,7 +300,7 @@ export default function TeamsPanel({ tenantId, profiles }: Props) {
             </div>
             <div className="max-h-40 overflow-y-auto space-y-1">
               {availableProfiles.map((p) => (
-                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => addMember(p.id)}>
+                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => handleAddMember(p.id)}>
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-full bg-muted/50 border border-border flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                       {(p.display_name?.[0] ?? "?").toUpperCase()}
