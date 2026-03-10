@@ -36,6 +36,16 @@ const AdminOpsPage = lazyRetry(() => import("./pages/admin/AdminOpsPage"));
 const AdminDiagPage = lazyRetry(() => import("./pages/admin/AdminDiagPage"));
 const AdminBillingPage = lazyRetry(() => import("./pages/admin/AdminBillingPage"));
 const AdminAuditPage = lazyRetry(() => import("./pages/admin/AdminAuditPage"));
+
+/* ── Platform Hub (Platform Admins only) ── */
+const PlatformLayout = lazyRetry(() => import("./pages/platform/PlatformLayout"));
+const PlatformLanding = lazyRetry(() => import("./pages/platform/PlatformLanding"));
+const PlatformTenantsPage = lazyRetry(() => import("./pages/platform/PlatformTenantsPage"));
+const PlatformBillingPage = lazyRetry(() => import("./pages/platform/PlatformBillingPage"));
+const PlatformHealthPage = lazyRetry(() => import("./pages/platform/PlatformHealthPage"));
+const PlatformMetricsPage = lazyRetry(() => import("./pages/platform/PlatformMetricsPage"));
+const PlatformAuditPage = lazyRetry(() => import("./pages/platform/PlatformAuditPage"));
+const PlatformAdminsPage = lazyRetry(() => import("./pages/platform/PlatformAdminsPage"));
 const VirtualizationMonitor = lazyRetry(() => import("./pages/VirtualizationMonitor"));
 const VirtualMachinesMonitor = lazyRetry(() => import("./pages/VirtualMachinesMonitor"));
 const BgpFlowMonitor = lazyRetry(() => import("./pages/BgpFlowMonitor"));
