@@ -87,8 +87,17 @@ Deno.serve(async (req) => {
       membersTenantScope = tenantToCheck;
     }
 
-    if (!isSuperAdmin && !tenantAdminActions.includes(action)) {
+    // Platform admin actions require super admin
+    const platformAdminActions = ["add_platform_admin", "remove_platform_admin"];
+    if (!isSuperAdmin && !tenantAdminActions.includes(action) && !platformAdminActions.includes(action)) {
       return new Response(JSON.stringify({ error: "Super admin role required", stage }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (platformAdminActions.includes(action) && !isSuperAdmin) {
+      return new Response(JSON.stringify({ error: "Platform admin role required", stage }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
