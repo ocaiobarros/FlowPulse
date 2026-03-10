@@ -21,6 +21,7 @@ import AdminBreadcrumb from "./AdminBreadcrumb";
 export default function AdminOrgsPage() {
   const { toast } = useToast();
   const { profiles, roles, tenants, selectedTenantId, setSelectedTenantId, isSuperAdmin, fetchData, profileById, getRoleForUser, getRoleBadgeVariant } = useAdmin();
+  const { refreshSession } = useTenantFilter();
 
   const [editingTeam, setEditingTeam] = useState(false);
   const [teamName, setTeamName] = useState("");
