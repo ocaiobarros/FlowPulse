@@ -235,7 +235,7 @@ export default function AdminLayout() {
             </Button>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <Crown className="w-5 h-5 text-primary" />
+                <Settings className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <h1 className="text-lg font-bold font-[Orbitron] tracking-wider text-foreground">TENANT ADMIN</h1>
