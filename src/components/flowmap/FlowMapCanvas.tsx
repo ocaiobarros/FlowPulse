@@ -566,7 +566,7 @@ export default function FlowMapCanvas({
         const pt = map.latLngToContainerPoint(c.calloutPoint);
         const newPt = L.point(pt.x + dx, pt.y + dy);
         const newLatLng = map.containerPointToLatLng(newPt);
-        c.calloutPoint = [newLatLng.lat, newLatLng.lng];
+        c.calloutPoint = clampToViewport([newLatLng.lat, newLatLng.lng]);
         rect = getPixelRect(c.calloutPoint);
       }
 
