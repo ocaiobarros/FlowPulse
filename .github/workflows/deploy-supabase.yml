@@ -63,6 +63,17 @@ jobs:
               fi
             fi
 
+            # Handle "already exists" errors by marking the failing migration as applied
+            if echo "$OUTPUT" | grep -qE "already exists \(SQLSTATE 42710|42P07\)"; then
+              # Extract the migration version that failed (first 14-digit timestamp from "Applying migration" line)
+              FAILED_VER=$(echo "$OUTPUT" | grep "Applying migration" | tail -1 | grep -oE '[0-9]{14}' | head -1)
+              if [ -n "$FAILED_VER" ]; then
+                echo "⚠️ Migration $FAILED_VER has objects that already exist on remote. Marking as applied."
+                npx supabase@latest migration repair "$FAILED_VER" --status applied || true
+                continue
+              fi
+            fi
+
             echo "❌ Unrecoverable error on attempt $ATTEMPT"
             exit $STATUS
           done
