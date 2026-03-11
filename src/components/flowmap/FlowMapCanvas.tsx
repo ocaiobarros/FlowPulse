@@ -352,7 +352,7 @@ export default function FlowMapCanvas({
     };
 
     // Links
-    links.forEach((link) => {
+    links.forEach((link, linkIdx) => {
       const originHost = hosts.find((h) => h.id === link.origin_host_id);
       const destHost = hosts.find((h) => h.id === link.dest_host_id);
       if (!originHost || !destHost) return;
