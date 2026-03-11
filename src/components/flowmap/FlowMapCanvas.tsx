@@ -145,12 +145,13 @@ function ensurePulseStyle() {
     .fm-traffic-glow{animation:fmGlow 2s ease-in-out infinite}
     .flowmap-tooltip{background:#0d0e1a!important;border:1px solid #00e67650!important;border-radius:10px!important;padding:12px 14px!important;box-shadow:0 8px 32px rgba(0,0,0,0.7),0 0 15px rgba(0,230,118,0.1)!important;}
     .flowmap-tooltip::before{border-top-color:#00e67650!important;}
-    .fm-traffic-label,.fm-traffic-label.leaflet-div-icon{background:none!important;border:none!important;padding:0!important;box-shadow:none!important;pointer-events:none!important;transition:opacity 0.3s ease;margin:0!important;width:auto!important;height:auto!important;outline:none!important;}
-    .fm-label-content{background:none;border:none;border-radius:0;padding:0;box-shadow:none;font-size:10px;text-shadow:0 0 4px rgba(0,0,0,0.9),0 1px 2px rgba(0,0,0,0.8);}
+    .fm-traffic-label,.fm-traffic-label.leaflet-div-icon{background:none!important;border:none!important;padding:0!important;box-shadow:none!important;pointer-events:none!important;transition:opacity 0.3s ease;margin:0!important;width:auto!important;height:auto!important;outline:none!important;overflow:visible!important;}
     .fm-traffic-label.fm-zoom-far{display:none!important;}
-    .fm-traffic-label.fm-zoom-mid{display:none!important;}
+    .fm-traffic-label.fm-zoom-mid .fm-callout-box{transform:scale(0.75);transform-origin:top left;}
     .fm-traffic-label.fm-zoom-close{opacity:1;}
     .fm-traffic-label.fm-zoom-detail{opacity:1;}
+    .fm-callout-box{transition:opacity 0.3s ease,transform 0.2s ease;}
+    .fm-leader-line{pointer-events:none;}
   `;
   document.head.appendChild(s);
 }
@@ -447,9 +448,7 @@ export default function FlowMapCanvas({
       const dLat = destHost.lat - originHost.lat;
       const dLon = destHost.lon - originHost.lon;
       const linkLen = Math.sqrt(dLat * dLat + dLon * dLon);
-      // Perpendicular unit vector (rotated 90°), scaled by offset factor
-      const offsetFactor = Math.max(0.12, Math.min(0.35, linkLen * 0.4));
-      // Alternate sides for even/odd links to reduce overlap
+      const offsetFactor = Math.max(0.08, Math.min(0.25, linkLen * 0.3));
       const side = linkIdx % 2 === 0 ? 1 : -1;
       const perpLat = side * (-dLon / (linkLen || 1)) * offsetFactor;
       const perpLon = side * (dLat / (linkLen || 1)) * offsetFactor;
@@ -457,32 +456,59 @@ export default function FlowMapCanvas({
       const calloutLon = midLon + perpLon;
       const calloutPoint: [number, number] = [calloutLat, calloutLon];
 
-      // Origin & dest names for callout header
+      // Origin & dest names
       const oName = originHost.host_name || originHost.zabbix_host_id;
       const dName = destHost.host_name || destHost.zabbix_host_id;
+
+      // Status badge colors
+      const statusBg = linkSt === "DOWN" ? "rgba(255,23,68,0.15)" : linkSt === "DEGRADED" ? "rgba(255,145,0,0.15)" : "rgba(0,230,118,0.12)";
+      const statusDot = linkSt === "DOWN" ? "#ff1744" : linkSt === "DEGRADED" ? "#ff9100" : "#00e676";
+      const statusText = linkSt === "DOWN" ? "DOWN" : linkSt === "DEGRADED" ? "DEGRADED" : "UP";
+
+      // Build rows
+      let trafficRows = "";
+      if (hasTelemetry) {
+        trafficRows += `
+          <div style="display:flex;gap:10px;justify-content:space-between;margin-top:5px;">
+            <div style="display:flex;align-items:center;gap:3px;">
+              <span style="color:#ff9100;font-size:10px;">▲</span>
+              <span style="color:#ff9100;font-weight:700;font-size:12px;">${fmtBps(ulBps)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:3px;">
+              <span style="color:#00e5ff;font-size:10px;">▼</span>
+              <span style="color:#00e5ff;font-weight:700;font-size:12px;">${fmtBps(dlBps)}</span>
+            </div>
+          </div>`;
+      }
+
+      let metaRow = "";
+      if (util != null || totalErrors > 0) {
+        const parts: string[] = [];
+        if (util != null) parts.push(`<span style="color:${utilColor};font-weight:600;">${utilVal.toFixed(1)}%</span>`);
+        if (totalErrors > 0) parts.push(`<span style="color:#ff1744;font-weight:600;">⚠ ${totalErrors} err</span>`);
+        metaRow = `<div style="display:flex;gap:8px;justify-content:center;font-size:10px;margin-top:3px;padding-top:3px;border-top:1px solid rgba(255,255,255,0.06);">${parts.join("")}</div>`;
+      }
 
       const labelHtml = `
         <div class="fm-callout-box" style="
           font-family:'JetBrains Mono',monospace;
-          background:rgba(10,12,28,0.88);
-          border:1px dashed ${qualityColor}90;
-          border-radius:6px;
-          padding:6px 10px;
+          background:rgba(8,10,24,0.92);
+          border:1px solid ${qualityColor}40;
+          border-left:3px solid ${qualityColor};
+          border-radius:8px;
+          padding:7px 10px 6px;
           white-space:nowrap;
-          min-width:120px;
-          box-shadow:0 0 12px rgba(0,0,0,0.6),0 0 4px ${qualityColor}30;
-          pointer-events:none;
+          min-width:140px;
+          box-shadow:0 4px 20px rgba(0,0,0,0.65), 0 0 8px ${qualityColor}15;
+          backdrop-filter:blur(6px);
         ">
-          <div style="font-size:9px;color:#888;line-height:1.3;margin-bottom:3px;text-align:center;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${oName} ⟷ ${dName}</div>
-          <div style="font-size:13px;color:${qualityColor};font-weight:700;text-align:center;text-shadow:0 0 6px ${qualityColor}60;">${qualityLabel}</div>
-          ${hasTelemetry ? `
-            <div style="display:flex;align-items:center;gap:6px;justify-content:center;font-weight:700;font-size:12px;margin-top:3px;">
-              <span style="color:#ff9100;">▲ ${fmtBps(ulBps)}</span>
-              <span style="color:#00e5ff;">▼ ${fmtBps(dlBps)}</span>
-            </div>
-            ${util != null ? `<div style="color:${utilColor};font-size:11px;font-weight:700;text-align:center;margin-top:1px;">${utilVal.toFixed(1)}%</div>` : ""}
-          ` : ""}
-          ${totalErrors > 0 ? `<div style="color:#ff1744;font-size:11px;font-weight:700;text-align:center;margin-top:1px;">⚠ ${totalErrors} erros</div>` : ""}
+          <div style="font-size:9px;color:#aaa;line-height:1.2;text-align:center;max-width:220px;overflow:hidden;text-overflow:ellipsis;letter-spacing:0.3px;">${oName} ⟷ ${dName}</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:4px;padding:2px 6px;border-radius:4px;background:${statusBg};">
+            <span style="width:7px;height:7px;border-radius:50%;background:${statusDot};box-shadow:0 0 6px ${statusDot}80;display:inline-block;"></span>
+            <span style="font-size:11px;color:${qualityColor};font-weight:700;letter-spacing:0.5px;">${statusText}</span>
+          </div>
+          ${trafficRows}
+          ${metaRow}
         </div>
       `;
 
@@ -496,12 +522,13 @@ export default function FlowMapCanvas({
       const labelMarker = L.marker(calloutPoint, { icon: labelIcon, interactive: false });
       labelMarker.addTo(labelsLayer);
 
-      // Leader line from callout box to link midpoint
+      // Leader line (dashed connector from callout to link center)
       const leaderLine = L.polyline([calloutPoint, midPoint], {
         color: qualityColor,
-        weight: 1,
-        opacity: 0.5,
-        dashArray: "4, 4",
+        weight: 1.2,
+        opacity: 0.4,
+        dashArray: "5, 5",
+        className: "fm-leader-line",
       });
       leaderLine.addTo(labelsLayer);
     });
