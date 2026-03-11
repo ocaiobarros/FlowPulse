@@ -314,13 +314,7 @@ export default function FlowMapCanvas({
         el.classList.remove("fm-zoom-far", "fm-zoom-mid", "fm-zoom-close", "fm-zoom-detail");
         el.classList.add(cls);
       });
-      // Show/hide cluster badges vs individual callouts
-      document.querySelectorAll(".fm-cluster-marker").forEach((el) => {
-        (el as HTMLElement).style.display = zoom <= 9 ? "" : "none";
-      });
-      document.querySelectorAll(".fm-individual-callout").forEach((el) => {
-        (el as HTMLElement).style.display = zoom > 9 ? "" : "none";
-      });
+      // No clustering - always show individual callouts
     }
 
     applyZoomClass();
