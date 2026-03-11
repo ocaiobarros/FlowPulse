@@ -314,13 +314,7 @@ export default function FlowMapCanvas({
         el.classList.remove("fm-zoom-far", "fm-zoom-mid", "fm-zoom-close", "fm-zoom-detail");
         el.classList.add(cls);
       });
-      // Show/hide cluster badges vs individual callouts
-      document.querySelectorAll(".fm-cluster-marker").forEach((el) => {
-        (el as HTMLElement).style.display = zoom <= 9 ? "" : "none";
-      });
-      document.querySelectorAll(".fm-individual-callout").forEach((el) => {
-        (el as HTMLElement).style.display = zoom > 9 ? "" : "none";
-      });
+      // No clustering - always show individual callouts
     }
 
     applyZoomClass();
@@ -569,61 +563,7 @@ export default function FlowMapCanvas({
       placedRects.push(rect);
     }
 
-    // ── ZOOM CLUSTERING: At mid-zoom, group nearby links into summary badges ──
-    const currentZoom = map.getZoom();
-    if (currentZoom <= 9 && callouts.length > 0) {
-      const gridSize = 0.5;
-      const clusters = new Map<string, { lats: number[]; lons: number[]; up: number; degraded: number; down: number }>();
-
-      for (const c of callouts) {
-        const gx = Math.floor(c.midPoint[0] / gridSize);
-        const gy = Math.floor(c.midPoint[1] / gridSize);
-        const key = `${gx}:${gy}`;
-        if (!clusters.has(key)) clusters.set(key, { lats: [], lons: [], up: 0, degraded: 0, down: 0 });
-        const cl = clusters.get(key)!;
-        cl.lats.push(c.midPoint[0]);
-        cl.lons.push(c.midPoint[1]);
-        if (c.linkSt === "DOWN") cl.down++;
-        else if (c.linkSt === "DEGRADED") cl.degraded++;
-        else cl.up++;
-      }
-
-      clusters.forEach((cl) => {
-        const avgLat = cl.lats.reduce((a, b) => a + b, 0) / cl.lats.length;
-        const avgLon = cl.lons.reduce((a, b) => a + b, 0) / cl.lons.length;
-        const total = cl.up + cl.degraded + cl.down;
-        const worstColor = cl.down > 0 ? "#ff1744" : cl.degraded > 0 ? "#ff9100" : "#00e676";
-        const borderGlow = cl.down > 0 ? "box-shadow:0 0 12px #ff174460;" : cl.degraded > 0 ? "box-shadow:0 0 10px #ff910040;" : "";
-
-        const badgeHtml = `
-          <div class="fm-cluster-badge" style="
-            font-family:'JetBrains Mono',monospace;
-            background:rgba(8,10,24,0.94);
-            border:2px solid ${worstColor}60;
-            border-radius:12px;
-            padding:5px 10px;
-            text-align:center;
-            ${borderGlow}
-            backdrop-filter:blur(4px);
-          ">
-            <div style="font-size:16px;font-weight:800;color:${worstColor};">${total}</div>
-            <div style="font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;">enlaces</div>
-            <div style="display:flex;gap:4px;justify-content:center;margin-top:3px;">
-              ${cl.up > 0 ? `<span style="font-size:9px;color:#00e676;font-weight:700;">${cl.up}✔</span>` : ""}
-              ${cl.degraded > 0 ? `<span style="font-size:9px;color:#ff9100;font-weight:700;">${cl.degraded}⚠</span>` : ""}
-              ${cl.down > 0 ? `<span style="font-size:9px;color:#ff1744;font-weight:700;">${cl.down}⛔</span>` : ""}
-            </div>
-          </div>`;
-
-        const clusterIcon = L.divIcon({
-          className: "fm-traffic-label fm-cluster-marker",
-          html: badgeHtml,
-          iconSize: L.point(0, 0),
-          iconAnchor: L.point(0, 0),
-        });
-        L.marker([avgLat, avgLon], { icon: clusterIcon, interactive: false }).addTo(labelsLayer);
-      });
-    }
+    // Clustering removed — individual callouts always visible
 
     // ── COMPACT CALLOUT BOXES with Mbps, lateral anchor, leader lines ──
     callouts.forEach((c) => {
