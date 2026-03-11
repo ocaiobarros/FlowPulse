@@ -546,14 +546,16 @@ export default function FlowMapCanvas({
     const hiddenCalloutIdxs = new Set<number>();
 
     for (const c of sortedCallouts) {
+      // Clamp initial position to viewport
+      c.calloutPoint = clampToViewport(c.calloutPoint);
       let rect = getPixelRect(c.calloutPoint);
       let resolved = false;
 
-      // Try nudging in Y-axis (up/down) first, then X
+      // Bigger nudge steps for larger boxes
       const nudgeSteps = [
-        [0, -35], [0, 35], [0, -65], [0, 65],     // Y nudge
-        [-50, -20], [50, -20], [-50, 20], [50, 20], // diagonal
-        [0, -100], [0, 100],                         // far Y
+        [0, -55], [0, 55], [0, -100], [0, 100],       // Y nudge
+        [-80, -40], [80, -40], [-80, 40], [80, 40],    // diagonal
+        [0, -150], [0, 150], [-120, 0], [120, 0],      // far
       ];
 
       for (const [dx, dy] of nudgeSteps) {
